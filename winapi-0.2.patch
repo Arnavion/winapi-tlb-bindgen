@@ -1,0 +1,95 @@
+diff --git a/src/macros.rs b/src/macros.rs
+index 0bbd6aa..abaa613 100644
+--- a/src/macros.rs
++++ b/src/macros.rs
+@@ -110,22 +110,22 @@ macro_rules! RIDL {
+     }) => {
+         #[repr(C)] #[allow(missing_copy_implementations)]
+         pub struct $vtbl {
+-            pub parent: $crate::$pvtbl
++            pub parent: ::$pvtbl
+         }
+         #[repr(C)] #[derive(Debug)] #[allow(missing_copy_implementations)]
+         pub struct $interface {
+             pub lpVtbl: *const $vtbl
+         }
+         impl ::std::ops::Deref for $interface {
+-            type Target = $crate::$pinterface;
++            type Target = ::$pinterface;
+             #[inline]
+-            fn deref(&self) -> &$crate::$pinterface {
++            fn deref(&self) -> &::$pinterface {
+                 unsafe { ::std::mem::transmute(self) }
+             }
+         }
+         impl ::std::ops::DerefMut for $interface {
+             #[inline]
+-            fn deref_mut(&mut self) -> &mut $crate::$pinterface {
++            fn deref_mut(&mut self) -> &mut ::$pinterface {
+                 unsafe { ::std::mem::transmute(self) }
+             }
+         }
+@@ -137,7 +137,7 @@ macro_rules! RIDL {
+     ) => {
+         #[repr(C)] #[allow(missing_copy_implementations)]
+         pub struct $vtbl {
+-            pub parent: $crate::$pvtbl
++            pub parent: ::$pvtbl
+             $(,pub $method: unsafe extern "system" fn(
+                 This: *mut $interface
+                 $(,$p: $t)*
+@@ -154,20 +154,21 @@ macro_rules! RIDL {
+             })+
+         }
+         impl ::std::ops::Deref for $interface {
+-            type Target = $crate::$pinterface;
++            type Target = ::$pinterface;
+             #[inline]
+-            fn deref(&self) -> &$crate::$pinterface {
++            fn deref(&self) -> &::$pinterface {
+                 unsafe { ::std::mem::transmute(self) }
+             }
+         }
+         impl ::std::ops::DerefMut for $interface {
+             #[inline]
+-            fn deref_mut(&mut self) -> &mut $crate::$pinterface {
++            fn deref_mut(&mut self) -> &mut ::$pinterface {
+                 unsafe { ::std::mem::transmute(self) }
+             }
+         }
+     };
+ }
++#[macro_export]
+ macro_rules! UNION {
+     ($base:ident, $field:ident, $variant:ident, $variantmut:ident, $fieldtype:ty) => {
+         impl $base {
+@@ -182,6 +183,21 @@ macro_rules! UNION {
+         }
+     }
+ }
++#[macro_export]
++macro_rules! UNION2 {
++    ($enumtype:ident, $variant:ident, $variantmut:ident, $targettype:ty) => {
++        impl $enumtype {
++            #[inline]
++            pub unsafe fn $variant(&self) -> &$targettype {
++                ::std::mem::transmute(self)
++            }
++            #[inline]
++            pub unsafe fn $variantmut(&mut self) -> &mut $targettype {
++                ::std::mem::transmute(self)
++            }
++        }
++    }
++}
+ macro_rules! BITFIELD {
+     ($base:ident $field:ident: $fieldtype:ty [
+         $($thing:ident $set_thing:ident[$r:expr],)+
+@@ -250,6 +266,7 @@ macro_rules! FLAGS {
+         }
+     }
+ }
++#[macro_export]
+ macro_rules! STRUCT {
+     {$(#[$attrs:meta])* nodebug struct $name:ident { $($field:ident: $ftype:ty,)+ }} => {
+         #[repr(C)] $(#[$attrs])*

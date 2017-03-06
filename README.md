@@ -18,3 +18,7 @@ Generates bindings to COM interfaces / enums in the style of [winapi-rs v0.2](ht
 ---
 
 Requires a new macro `UNION2!` in winapi that transmutes `self` instead of `self.$field`. The existing `UNION!` macro acts on the field of a struct `S` that is of a type that's a union `U`, thus it generates impls of `S` that transmute the field into one of the union variants. This codegen instead generates a newtype for the union and expects the `UNION2!` macro to generate impls for the newtype that transmute itself to the variants.
+
+Some changes to the existing macros are also needed.
+
+The winapi-0.2.patch in this repository can be applied to a clone of winapi-rs's `0.2` branch to get everything working.
