@@ -1,11 +1,19 @@
 Generates bindings to COM interfaces / enums in the style of [winapi-rs v0.2](https://github.com/retep998/winapi-rs/tree/0.2)
 
-1. Compile `main.cpp` to `typelib.exe`
+1. Compile `main.cpp` to `winapi-tlb-bindgen.exe`
 
 1. Run against a .tlb
 
 	```powershell
-	.\x64\Debug\typelib.exe 'C:\Program Files (x86)\Windows Kits\8.1\Lib\winv6.3\um\x64\MsXml.Tlb' > ~\Desktop\msxml.rs
+	# Output compatible with winapi v0.2
+	.\winapi-tlb-bindgen.exe 'C:\Program Files (x86)\Windows Kits\8.1\Lib\winv6.3\um\x64\MsXml.Tlb' > ~\Desktop\msxml.rs
+	if ($LASTEXITCODE -eq 0) { cat ~\Desktop\msxml.rs }
+
+	or
+
+	```powershell
+	# Output compatible with winapi v0.3
+	.\winapi-tlb-bindgen.exe 0.3 'C:\Program Files (x86)\Windows Kits\8.1\Lib\winv6.3\um\x64\MsXml.Tlb' > ~\Desktop\msxml.rs
 	if ($LASTEXITCODE -eq 0) { cat ~\Desktop\msxml.rs }
 	```
 
