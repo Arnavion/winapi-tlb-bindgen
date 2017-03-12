@@ -209,7 +209,7 @@ int wmain(int argc, wchar_t* argv[])
 					auto memberNameString = sanitizeReserved(memberName);
 
 					std::wcout
-						<< L"    " << memberName << L" = ";
+						<< L"    " << memberNameString << L" = ";
 
 					switch (memberDesc->lpvarValue->vt)
 					{
@@ -558,14 +558,11 @@ int wmain(int argc, wchar_t* argv[])
 					VARDESC* memberDesc;
 					TRY(typeInfo->GetVarDesc(iMember, &memberDesc));
 
-					BSTR memberName;
+					bstr_t memberName;
 					UINT numMemberNamesReceived;
-					TRY(typeInfo->GetNames(memberDesc->memid, &memberName, 1, &numMemberNamesReceived));
+					TRY(typeInfo->GetNames(memberDesc->memid, memberName.GetAddress(), 1, &numMemberNamesReceived));
 					ASSERT(numMemberNamesReceived == 1);
 					auto memberNameString = sanitizeReserved(memberName);
-					SysFreeString(memberName);
-
-					auto memberTypeString = typeToString(memberDesc->elemdescVar.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode);
 
 					std::wcout
 						<< L"    fn get_" << memberNameString << L"(" << std::endl;
@@ -668,12 +665,11 @@ int wmain(int argc, wchar_t* argv[])
 					TRY(typeInfo->GetNames(memberDesc->memid, memberName.GetAddress(), 1, &numMemberNamesReceived));
 					ASSERT(numMemberNamesReceived == 1);
 					auto memberNameString = sanitizeReserved(memberName);
-					SysFreeString(memberName);
 
 					std::wcout
 						<< L"UNION2!(" << typeName
-						<< L", " << memberName
-						<< L", " << memberName << L"_mut"
+						<< L", " << memberNameString
+						<< L", " << memberNameString << L"_mut"
 						<< L", " << typeToString(memberDesc->elemdescVar.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode) << L");" << std::endl;
 
 					typeInfo->ReleaseVarDesc(memberDesc);
