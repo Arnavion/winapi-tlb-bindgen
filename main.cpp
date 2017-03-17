@@ -567,19 +567,18 @@ int wmain(int argc, wchar_t* argv[])
 				}
 
 				std::wcout
-					<< L"struct " << typeName << L"(" << wrappedType << L");" << std::endl;
+					<< L"UNION2! { union " << typeName << L" {" << std::endl
+					<< L"    " << wrappedType << L"," << std::endl;
 
 				for (const auto& field : typeInfo.GetFields())
 				{
 					const auto fieldName = sanitizeReserved(field.Name());
 					std::wcout
-						<< L"UNION2!(" << typeName
-						<< L", " << fieldName
-						<< L", " << fieldName << L"_mut"
-						<< L", " << typeToString(field.Type(), PARAMFLAG_FOUT, typeInfo, outputMode) << L");" << std::endl;
+						<< L"    " << fieldName << L" " << fieldName << L"_mut" << L": " << typeToString(field.Type(), PARAMFLAG_FOUT, typeInfo, outputMode) << L"," << std::endl;
 				}
 
 				std::wcout
+					<< L"}}" << std::endl
 					<< std::endl;
 
 				break;

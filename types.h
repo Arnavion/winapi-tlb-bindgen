@@ -93,7 +93,7 @@ public:
 	// TKIND_ENUM
 	Vars GetVars() const;
 
-	// TKIND_RECORD, properties of TKIND_INTERFACE | TKIND_DISPATCH
+	// TKIND_RECORD | TKIND_UNION, properties of TKIND_INTERFACE | TKIND_DISPATCH
 	Fields GetFields() const;
 
 	// TKIND_MODULE | TKIND_INTERFACE | TKIND_DISPATCH

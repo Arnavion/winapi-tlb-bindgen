@@ -1,5 +1,5 @@
 diff --git a/src/macros.rs b/src/macros.rs
-index 0bbd6aa..abaa613 100644
+index 0bbd6aa..9b0849b 100644
 --- a/src/macros.rs
 +++ b/src/macros.rs
 @@ -110,22 +110,22 @@ macro_rules! RIDL {
@@ -38,7 +38,7 @@ index 0bbd6aa..abaa613 100644
              $(,pub $method: unsafe extern "system" fn(
                  This: *mut $interface
                  $(,$p: $t)*
-@@ -154,20 +154,21 @@ macro_rules! RIDL {
+@@ -154,15 +154,15 @@ macro_rules! RIDL {
              })+
          }
          impl ::std::ops::Deref for $interface {
@@ -57,35 +57,39 @@ index 0bbd6aa..abaa613 100644
                  unsafe { ::std::mem::transmute(self) }
              }
          }
-     };
- }
-+#[macro_export]
- macro_rules! UNION {
-     ($base:ident, $field:ident, $variant:ident, $variantmut:ident, $fieldtype:ty) => {
-         impl $base {
-@@ -182,6 +183,21 @@ macro_rules! UNION {
+@@ -182,6 +182,31 @@ macro_rules! UNION {
          }
      }
  }
 +#[macro_export]
 +macro_rules! UNION2 {
-+    ($enumtype:ident, $variant:ident, $variantmut:ident, $targettype:ty) => {
-+        impl $enumtype {
++    (union $name:ident {
++        $storage:ty,
++        $($variant:ident $variant_mut:ident: $ftype:ty,)+
++    }) => (
++        #[repr(C)] #[derive(Debug)] #[allow(missing_copy_implementations)]
++        pub struct $name(pub $storage);
++        impl Copy for $name {}
++        impl Clone for $name {
 +            #[inline]
-+            pub unsafe fn $variant(&self) -> &$targettype {
-+                ::std::mem::transmute(self)
-+            }
-+            #[inline]
-+            pub unsafe fn $variantmut(&mut self) -> &mut $targettype {
-+                ::std::mem::transmute(self)
-+            }
++            fn clone(&self) -> $name { *self }
 +        }
-+    }
++        impl $name {$(
++            #[inline]
++            pub unsafe fn $variant(&self) -> &$ftype {
++                ::std::mem::transmute(self)
++            }
++            #[inline]
++            pub unsafe fn $variant_mut(&mut self) -> &mut $ftype {
++                ::std::mem::transmute(self)
++            }
++        )+}
++    );
 +}
  macro_rules! BITFIELD {
      ($base:ident $field:ident: $fieldtype:ty [
          $($thing:ident $set_thing:ident[$r:expr],)+
-@@ -250,6 +266,7 @@ macro_rules! FLAGS {
+@@ -250,6 +275,7 @@ macro_rules! FLAGS {
          }
      }
  }
