@@ -48,22 +48,22 @@ std::wstring wellKnownWinapiTypeToString(VARTYPE vt, OutputMode outputMode)
 
 	switch (vt)
 	{
-	case VT_CY: result = L"CY"; break;
-	case VT_DATE: result = L"DATE"; break;
-	case VT_BSTR: result = L"BSTR"; break;
-	case VT_DISPATCH: result = L"LPDISPATCH"; break;
-	case VT_ERROR: result = L"SCODE"; break;
-	case VT_BOOL: result = L"VARIANT_BOOL"; break;
-	case VT_VARIANT: result = L"VARIANT"; break;
-	case VT_UNKNOWN: result = L"LPUNKNOWN"; break;
-	case VT_DECIMAL: result = L"DECIMAL"; break;
-	case VT_INT: result = L"INT"; break;
-	case VT_UINT: result = L"UINT"; break;
-	case VT_VOID: result = L"c_void"; break;
-	case VT_HRESULT: result = L"HRESULT"; break;
-	case VT_SAFEARRAY: result = L"SAFEARRAY"; break;
-	case VT_LPSTR: result = L"LPSTR"; break;
-	case VT_LPWSTR: result = L"LPCWSTR"; break;
+	case VARENUM::VT_CY: result = L"CY"; break;
+	case VARENUM::VT_DATE: result = L"DATE"; break;
+	case VARENUM::VT_BSTR: result = L"BSTR"; break;
+	case VARENUM::VT_DISPATCH: result = L"LPDISPATCH"; break;
+	case VARENUM::VT_ERROR: result = L"SCODE"; break;
+	case VARENUM::VT_BOOL: result = L"VARIANT_BOOL"; break;
+	case VARENUM::VT_VARIANT: result = L"VARIANT"; break;
+	case VARENUM::VT_UNKNOWN: result = L"LPUNKNOWN"; break;
+	case VARENUM::VT_DECIMAL: result = L"DECIMAL"; break;
+	case VARENUM::VT_INT: result = L"INT"; break;
+	case VARENUM::VT_UINT: result = L"UINT"; break;
+	case VARENUM::VT_VOID: result = L"c_void"; break;
+	case VARENUM::VT_HRESULT: result = L"HRESULT"; break;
+	case VARENUM::VT_SAFEARRAY: result = L"SAFEARRAY"; break;
+	case VARENUM::VT_LPSTR: result = L"LPSTR"; break;
+	case VARENUM::VT_LPWSTR: result = L"LPCWSTR"; break;
 	default: UNREACHABLE;
 	}
 
@@ -79,16 +79,16 @@ std::wstring wellKnownTypeToString(VARTYPE vt, OutputMode outputMode)
 {
 	switch (vt)
 	{
-	case VT_I2: return L"i16"; break;
-	case VT_I4: return L"i32"; break;
-	case VT_R4: return L"f32"; break;
-	case VT_R8: return L"f64"; break;
-	case VT_I1: return L"i8"; break;
-	case VT_UI1: return L"u8"; break;
-	case VT_UI2: return L"u16"; break;
-	case VT_UI4: return L"u32"; break;
-	case VT_I8: return L"i64"; break;
-	case VT_UI8: return L"u64"; break;
+	case VARENUM::VT_I2: return L"i16"; break;
+	case VARENUM::VT_I4: return L"i32"; break;
+	case VARENUM::VT_R4: return L"f32"; break;
+	case VARENUM::VT_R8: return L"f64"; break;
+	case VARENUM::VT_I1: return L"i8"; break;
+	case VARENUM::VT_UI1: return L"u8"; break;
+	case VARENUM::VT_UI2: return L"u16"; break;
+	case VARENUM::VT_UI4: return L"u32"; break;
+	case VARENUM::VT_I8: return L"i64"; break;
+	case VARENUM::VT_UI8: return L"u64"; break;
 	default: return wellKnownWinapiTypeToString(vt, outputMode);
 	}
 }
@@ -97,7 +97,7 @@ std::wstring typeToString(const TYPEDESC& type, USHORT paramFlags, const TypeInf
 {
 	switch (type.vt)
 	{
-	case VT_PTR:
+	case VARENUM::VT_PTR:
 		if ((paramFlags & PARAMFLAG_FIN) && !(paramFlags & PARAMFLAG_FOUT))
 		{
 			// [in] => *const
@@ -110,12 +110,12 @@ std::wstring typeToString(const TYPEDESC& type, USHORT paramFlags, const TypeInf
 			return L"*mut " + typeToString(*type.lptdesc, paramFlags, typeInfo, outputMode);
 		}
 
-	case VT_CARRAY:
+	case VARENUM::VT_CARRAY:
 		ASSERT(type.lpadesc->cDims == 1);
 
 		return L"[" + typeToString(type.lpadesc->tdescElem, paramFlags, typeInfo, outputMode) + L"; " + std::to_wstring(type.lpadesc->rgbounds[0].cElements) + L"]";
 
-	case VT_USERDEFINED:
+	case VARENUM::VT_USERDEFINED:
 		return typeInfo.GetRefTypeInfo(type.hreftype).Name().GetBSTR();
 
 	default:
@@ -175,7 +175,7 @@ int wmain(int argc, wchar_t* argv[])
 
 			switch (attributes.typekind)
 			{
-			case TKIND_ENUM:
+			case TYPEKIND::TKIND_ENUM:
 				std::wcout
 					<< L"ENUM! { enum " << typeName << L" {" << std::endl;
 
@@ -187,7 +187,7 @@ int wmain(int argc, wchar_t* argv[])
 					const auto& value = member.Value();
 					switch (value.vt)
 					{
-					case VT_I4:
+					case VARENUM::VT_I4:
 						std::wcout
 							<< value.lVal;
 						break;
@@ -206,7 +206,7 @@ int wmain(int argc, wchar_t* argv[])
 
 				break;
 
-			case TKIND_RECORD:
+			case TYPEKIND::TKIND_RECORD:
 				std::wcout
 					<< L"STRUCT! { struct " << typeName << L" {" << std::endl;
 
@@ -222,12 +222,12 @@ int wmain(int argc, wchar_t* argv[])
 
 				break;
 
-			case TKIND_MODULE:
+			case TYPEKIND::TKIND_MODULE:
 				// TODO
 				goto unknown;
 
-			case TKIND_INTERFACE:
-			case TKIND_DISPATCH:
+			case TYPEKIND::TKIND_INTERFACE:
+			case TYPEKIND::TKIND_DISPATCH:
 			{
 				switch (outputMode)
 				{
@@ -322,12 +322,12 @@ int wmain(int argc, wchar_t* argv[])
 							haveAtleastOneParam = true;
 						}
 
-						if (function->elemdescFunc.tdesc.vt == VT_VOID)
+						if (function->elemdescFunc.tdesc.vt == VARENUM::VT_VOID)
 						{
 							// All HRESULT-returning functions are specified as returning void ???
 							std::wcout
 								<< std::endl
-								<< L"    ) -> " << wellKnownTypeToString(VT_HRESULT, outputMode);
+								<< L"    ) -> " << wellKnownTypeToString(VARENUM::VT_HRESULT, outputMode);
 						}
 						else
 						{
@@ -379,7 +379,7 @@ int wmain(int argc, wchar_t* argv[])
 
 						if (explicitRetVal)
 						{
-							ASSERT(function->elemdescFunc.tdesc.vt == VT_HRESULT);
+							ASSERT(function->elemdescFunc.tdesc.vt == VARENUM::VT_HRESULT);
 							std::wcout
 								<< std::endl
 								<< L"    ) -> " << typeToString(function->elemdescFunc.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode);
@@ -395,7 +395,7 @@ int wmain(int argc, wchar_t* argv[])
 							std::wcout
 								<< std::endl
 								<< L"        value: *mut " << typeToString(function->elemdescFunc.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode) << std::endl
-								<< L"    ) -> " << wellKnownTypeToString(VT_HRESULT, outputMode);
+								<< L"    ) -> " << wellKnownTypeToString(VARENUM::VT_HRESULT, outputMode);
 						}
 
 						break;
@@ -406,7 +406,7 @@ int wmain(int argc, wchar_t* argv[])
 						std::wcout
 							<< L"    fn ";
 
-						if (function->invkind == INVOKE_PROPERTYPUT)
+						if (function->invkind == INVOKEKIND::INVOKE_PROPERTYPUT)
 						{
 							std::wcout
 								<< "put_";
@@ -446,16 +446,16 @@ int wmain(int argc, wchar_t* argv[])
 							haveAtleastOneParam = true;
 						}
 
-						if (function->elemdescFunc.tdesc.vt == VT_VOID)
+						if (function->elemdescFunc.tdesc.vt == VARENUM::VT_VOID)
 						{
 							// HRESULT-returning function is specified as returning void ???
 							std::wcout
 								<< std::endl
-								<< L"    ) -> " << wellKnownTypeToString(VT_HRESULT, outputMode);
+								<< L"    ) -> " << wellKnownTypeToString(VARENUM::VT_HRESULT, outputMode);
 						}
 						else
 						{
-							ASSERT(function->elemdescFunc.tdesc.vt == VT_HRESULT);
+							ASSERT(function->elemdescFunc.tdesc.vt == VARENUM::VT_HRESULT);
 
 							std::wcout
 								<< std::endl
@@ -493,7 +493,7 @@ int wmain(int argc, wchar_t* argv[])
 
 					std::wcout
 						<< L"        value: *mut " << typeToString(property.Type(), PARAMFLAG_FOUT, typeInfo, outputMode) << std::endl
-						<< L"    ) -> " << wellKnownTypeToString(VT_HRESULT, outputMode) << L"," << std::endl
+						<< L"    ) -> " << wellKnownTypeToString(VARENUM::VT_HRESULT, outputMode) << L"," << std::endl
 						<< L"    fn put_" << propertyName << L"(" << std::endl;
 
 					if (outputMode == OutputMode::WINAPI_0_2)
@@ -504,7 +504,7 @@ int wmain(int argc, wchar_t* argv[])
 
 					std::wcout
 						<< L"        value: " << typeToString(property.Type(), PARAMFLAG_FIN, typeInfo, outputMode) << std::endl
-						<< L"    ) -> " << wellKnownTypeToString(VT_HRESULT, outputMode);
+						<< L"    ) -> " << wellKnownTypeToString(VARENUM::VT_HRESULT, outputMode);
 				}
 
 				switch (outputMode)
@@ -532,18 +532,18 @@ int wmain(int argc, wchar_t* argv[])
 				break;
 			}
 
-			case TKIND_COCLASS:
+			case TYPEKIND::TKIND_COCLASS:
 				// TODO
 				goto unknown;
 
-			case TKIND_ALIAS:
+			case TYPEKIND::TKIND_ALIAS:
 				std::wcout
 					<< L"type " << typeName << L" = " << typeToString(attributes.tdescAlias, PARAMFLAG_FOUT, typeInfo, outputMode) << L";" << std::endl
 					<< std::endl;
 
 				break;
 
-			case TKIND_UNION:
+			case TYPEKIND::TKIND_UNION:
 			{
 				std::wstring alignment;
 				switch (attributes.cbAlignment)
