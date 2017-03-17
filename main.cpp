@@ -639,7 +639,7 @@ int wmain(int argc, wchar_t* argv[])
 				default: UNREACHABLE;
 				}
 
-				auto numAlignedElements = typeAttributes->cbSizeInstance / typeAttributes->cbAlignment;
+				auto numAlignedElements = (typeAttributes->cbSizeInstance + typeAttributes->cbAlignment - 1) / typeAttributes->cbAlignment;
 				ASSERT(numAlignedElements > 0);
 
 				std::wstring wrappedType;
