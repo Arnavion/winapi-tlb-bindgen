@@ -98,16 +98,16 @@ std::wstring typeToString(const TYPEDESC& type, USHORT paramFlags, const TypeInf
 	switch (type.vt)
 	{
 	case VT_PTR:
-		if (!(paramFlags & PARAMFLAG_FIN))
+		if ((paramFlags & PARAMFLAG_FIN) && !(paramFlags & PARAMFLAG_FOUT))
+		{
+			// [in] => *const
+			return L"*const " + typeToString(*type.lptdesc, paramFlags, typeInfo, outputMode);
+		}
+		else
 		{
 			// [in, out] => *mut
 			// [] => *mut (Some functions like IXMLError::GetErrorInfo don't annotate [out] on their out parameter)
 			return L"*mut " + typeToString(*type.lptdesc, paramFlags, typeInfo, outputMode);
-		}
-		else
-		{
-			// [in] => *const
-			return L"*const " + typeToString(*type.lptdesc, paramFlags, typeInfo, outputMode);
 		}
 
 	case VT_CARRAY:
