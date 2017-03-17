@@ -1,5 +1,7 @@
+#include "common.h"
+#include "types.h"
+
 #include <Windows.h>
-#include <comdef.h>
 #include <OleAuto.h>
 
 #include <algorithm>
@@ -7,10 +9,6 @@
 #include <iostream>
 #include <string>
 #include <vector>
-
-#define TRY(expr) do { HRESULT hr = (expr); if (FAILED(hr)) { if (hr == TYPE_E_CANTLOADLIBRARY) { exit(1); } else { abort(); } } } while (false)
-#define ASSERT(expr) do { if (!(expr)) { abort(); } } while (false)
-#define UNREACHABLE do { abort(); } while (false)
 
 constexpr size_t wcslen_const(const wchar_t* str)
 {
@@ -61,7 +59,7 @@ std::wstring wellKnownWinapiTypeToString(VARTYPE vt, OutputMode outputMode)
 	case VT_DECIMAL: result = L"DECIMAL"; break;
 	case VT_INT: result = L"INT"; break;
 	case VT_UINT: result = L"UINT"; break;
-	case VT_VOID: return L"c_void"; break;
+	case VT_VOID: result = L"c_void"; break;
 	case VT_HRESULT: result = L"HRESULT"; break;
 	case VT_SAFEARRAY: result = L"SAFEARRAY"; break;
 	case VT_LPSTR: result = L"LPSTR"; break;
@@ -95,7 +93,7 @@ std::wstring wellKnownTypeToString(VARTYPE vt, OutputMode outputMode)
 	}
 }
 
-std::wstring typeToString(const TYPEDESC& type, USHORT paramFlags, ITypeInfo* typeInfo, OutputMode outputMode)
+std::wstring typeToString(const TYPEDESC& type, USHORT paramFlags, const TypeInfo& typeInfo, OutputMode outputMode)
 {
 	switch (type.vt)
 	{
@@ -115,34 +113,24 @@ std::wstring typeToString(const TYPEDESC& type, USHORT paramFlags, ITypeInfo* ty
 	case VT_CARRAY:
 		ASSERT(type.lpadesc->cDims == 1);
 
-		return std::wstring(L"[") + typeToString(type.lpadesc->tdescElem, paramFlags, typeInfo, outputMode) + L"; " + std::to_wstring(type.lpadesc->rgbounds[0].cElements) + L"]";
+		return L"[" + typeToString(type.lpadesc->tdescElem, paramFlags, typeInfo, outputMode) + L"; " + std::to_wstring(type.lpadesc->rgbounds[0].cElements) + L"]";
 
 	case VT_USERDEFINED:
-	{
-		ITypeInfoPtr refTypeInfo;
-		TRY(typeInfo->GetRefTypeInfo(type.hreftype, &refTypeInfo));
-
-		bstr_t refTypeName;
-		TRY(refTypeInfo->GetDocumentation(MEMBERID_NIL, refTypeName.GetAddress(), nullptr, nullptr, nullptr));
-
-		return refTypeName.GetBSTR();
-	}
+		return typeInfo.GetRefTypeInfo(type.hreftype).Name().GetBSTR();
 
 	default:
 		return wellKnownTypeToString(type.vt, outputMode);
 	}
 }
 
-std::wstring sanitizeReserved(bstr_t str)
+std::wstring sanitizeReserved(const wchar_t* str)
 {
-	auto result = std::wstring(str);
-
 	if (wcscmp(str, L"type") == 0)
 	{
-		result = L"type_";
+		return L"type_";
 	}
 
-	return result;
+	return str;
 }
 
 int wmain(int argc, wchar_t* argv[])
@@ -170,52 +158,38 @@ int wmain(int argc, wchar_t* argv[])
 			<< L"Example: Bindgen for msxml compatible with winapi v0.3" << std::endl
 			<< L"    winapi-tlb-bindgen.exe 0.3 \"C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.14393.0\\um\\x64\\MsXml.Tlb\"" << std::endl;
 
-		exit(1);
+		std::exit(1);
 	}
 
 	TRY(CoInitialize(nullptr));
 
 	{
-		ITypeLibPtr typeLib;
-		TRY(LoadTypeLibEx(filename, REGKIND_NONE, &typeLib));
+		ITypeLibPtr typeLibPtr;
+		TRY(LoadTypeLibEx(filename, REGKIND_NONE, &typeLibPtr));
+		const auto typeLib = TypeLib(typeLibPtr);
 
-		auto count = typeLib->GetTypeInfoCount();
-		for (decltype(count) iTypeInfo = 0; iTypeInfo < count; iTypeInfo++)
+		for (const auto& typeInfo : typeLib.GetTypeInfos())
 		{
-			ITypeInfoPtr typeInfo;
-			TRY(typeLib->GetTypeInfo(iTypeInfo, &typeInfo));
+			const auto typeName = typeInfo.Name();
+			const auto& attributes = typeInfo.Attributes();
 
-			bstr_t typeName;
-			TRY(typeInfo->GetDocumentation(MEMBERID_NIL, typeName.GetAddress(), nullptr, nullptr, nullptr));
-
-			TYPEATTR* typeAttributes;
-			TRY(typeInfo->GetTypeAttr(&typeAttributes));
-
-			switch (typeAttributes->typekind)
+			switch (attributes.typekind)
 			{
 			case TKIND_ENUM:
 				std::wcout
 					<< L"ENUM! { enum " << typeName << L" {" << std::endl;
 
-				for (decltype(typeAttributes->cVars) iMember = 0; iMember < typeAttributes->cVars; iMember++)
+				for (const auto& member : typeInfo.GetVars())
 				{
-					VARDESC* memberDesc;
-					TRY(typeInfo->GetVarDesc(iMember, &memberDesc));
-
-					bstr_t memberName;
-					UINT numMemberNamesReceived;
-					TRY(typeInfo->GetNames(memberDesc->memid, memberName.GetAddress(), 1, &numMemberNamesReceived));
-					ASSERT(numMemberNamesReceived == 1);
-					auto memberNameString = sanitizeReserved(memberName);
-
 					std::wcout
-						<< L"    " << memberNameString << L" = ";
+						<< L"    " << sanitizeReserved(member.Name()) << L" = ";
 
-					switch (memberDesc->lpvarValue->vt)
+					const auto& value = member.Value();
+					switch (value.vt)
 					{
 					case VT_I4:
 						std::wcout
-							<< memberDesc->lpvarValue->lVal;
+							<< value.lVal;
 						break;
 
 					default:
@@ -224,14 +198,10 @@ int wmain(int argc, wchar_t* argv[])
 
 					std::wcout
 						<< L"," << std::endl;
-
-					typeInfo->ReleaseVarDesc(memberDesc);
 				}
 
 				std::wcout
-					<< L"}}" << std::endl;
-
-				std::wcout
+					<< L"}}" << std::endl
 					<< std::endl;
 
 				break;
@@ -240,27 +210,14 @@ int wmain(int argc, wchar_t* argv[])
 				std::wcout
 					<< L"STRUCT! { struct " << typeName << L" {" << std::endl;
 
-				for (decltype(typeAttributes->cVars) iMember = 0; iMember < typeAttributes->cVars; iMember++)
+				for (const auto& field : typeInfo.GetFields())
 				{
-					VARDESC* memberDesc;
-					TRY(typeInfo->GetVarDesc(iMember, &memberDesc));
-
-					bstr_t memberName;
-					UINT numMemberNamesReceived;
-					TRY(typeInfo->GetNames(memberDesc->memid, memberName.GetAddress(), 1, &numMemberNamesReceived));
-					ASSERT(numMemberNamesReceived == 1);
-					auto memberNameString = sanitizeReserved(memberName);
-
 					std::wcout
-						<< L"    " << memberNameString << L": " << typeToString(memberDesc->elemdescVar.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode) << L"," << std::endl;
-
-					typeInfo->ReleaseVarDesc(memberDesc);
+						<< L"    " << sanitizeReserved(field.Name()) << L": " << typeToString(field.Type(), PARAMFLAG_FOUT, typeInfo, outputMode) << L"," << std::endl;
 				}
 
 				std::wcout
-					<< L"}}" << std::endl;
-
-				std::wcout
+					<< L"}}" << std::endl
 					<< std::endl;
 
 				break;
@@ -272,8 +229,6 @@ int wmain(int argc, wchar_t* argv[])
 			case TKIND_INTERFACE:
 			case TKIND_DISPATCH:
 			{
-				auto haveAtleastOneItem = false;
-
 				switch (outputMode)
 				{
 				case OutputMode::WINAPI_0_2:
@@ -283,7 +238,7 @@ int wmain(int argc, wchar_t* argv[])
 
 				case OutputMode::WINAPI_0_3:
 					std::wcout
-						<< L"RIDL!{#[uuid(" << guidToUuidAttribute(typeAttributes->guid) << L")]" << std::endl;
+						<< L"RIDL!{#[uuid(" << guidToUuidAttribute(attributes.guid) << L")]" << std::endl;
 					break;
 
 				default:
@@ -294,27 +249,13 @@ int wmain(int argc, wchar_t* argv[])
 					<< L"interface " << typeName << L"(" << typeName << L"Vtbl)";
 
 				std::wstring parents;
-				WORD parentVtblSize = 0;
+				decltype(FUNCDESC::oVft) parentVtblSize = 0;
 
-				for (decltype(typeAttributes->cImplTypes) iParent = 0; iParent < typeAttributes->cImplTypes; iParent++)
+				for (const auto& parent : typeInfo.GetParents())
 				{
-					HREFTYPE parentType = 0;
-					TRY(typeInfo->GetRefTypeOfImplType(iParent, &parentType));
-
-					ITypeInfoPtr parentTypeInfo;
-					TRY(typeInfo->GetRefTypeInfo(parentType, &parentTypeInfo));
-
-					bstr_t parentTypeName;
-					parentTypeInfo->GetDocumentation(MEMBERID_NIL, parentTypeName.GetAddress(), nullptr, nullptr, nullptr);
-
+					auto parentTypeName = parent.Name();
 					parents += std::wstring(L", ") + parentTypeName.GetBSTR() + L"(" + parentTypeName.GetBSTR() + L"Vtbl)";
-
-					TYPEATTR* parentTypeAttributes;
-					TRY(parentTypeInfo->GetTypeAttr(&parentTypeAttributes));
-
-					parentVtblSize += parentTypeAttributes->cbSizeVft;
-
-					parentTypeInfo->ReleaseTypeAttr(parentTypeAttributes);
+					parentVtblSize += parent.Attributes().cbSizeVft;
 				}
 
 				if (!parents.empty())
@@ -326,12 +267,11 @@ int wmain(int argc, wchar_t* argv[])
 				std::wcout
 					<< L" {" << std::endl;
 
-				for (decltype(typeAttributes->cFuncs) iFunc = 0; iFunc < typeAttributes->cFuncs; iFunc++)
-				{
-					FUNCDESC* funcDesc;
-					TRY(typeInfo->GetFuncDesc(iFunc, &funcDesc));
+				auto haveAtleastOneItem = false;
 
-					if (funcDesc->oVft < parentVtblSize)
+				for (const auto& function : typeInfo.GetFunctions())
+				{
+					if (function->oVft < parentVtblSize)
 					{
 						// Inherited from ancestors
 						continue;
@@ -342,119 +282,111 @@ int wmain(int argc, wchar_t* argv[])
 						std::wcout
 							<< L"," << std::endl;
 					}
-
 					haveAtleastOneItem = true;
 
-					ASSERT(funcDesc->funckind != FUNC_STATIC);
+					ASSERT(function->funckind != FUNC_STATIC);
 
-					auto funcNameAddresses = std::vector<BSTR>(1 + funcDesc->cParams);
-					UINT numFuncNamesReceived;
-					TRY(typeInfo->GetNames(funcDesc->memid, &*funcNameAddresses.begin(), static_cast<UINT>(funcNameAddresses.size()), &numFuncNamesReceived));
+					const auto funcName = function.Name();
 
-					ASSERT(numFuncNamesReceived >= 1);
+					bool haveAtleastOneParam = false;
 
-					auto funcNames = std::vector<bstr_t>(funcNameAddresses.size());
-					std::transform(
-						funcNameAddresses.begin(), funcNameAddresses.end(),
-						funcNames.begin(),
-						funcNames.begin(),
-						[](const BSTR& funcNameAddress, bstr_t& funcName) { funcName.Attach(funcNameAddress); return funcName; });
-
-					auto funcNameString = std::wstring(funcNames[0]);
-					auto paramNames = std::move(funcNames);
-					paramNames.erase(paramNames.begin());
-
-					switch (funcDesc->invkind)
+					switch (function->invkind)
 					{
 					case INVOKEKIND::INVOKE_FUNC:
-						ASSERT(numFuncNamesReceived == 1 + funcDesc->cParams);
-
 						std::wcout
-							<< L"    fn " << funcNameString << L"(";
+							<< L"    fn " << funcName << L"(";
 
 						if (outputMode == OutputMode::WINAPI_0_2)
 						{
 							std::wcout
 								<< std::endl
 								<< L"        &mut self";
+
+							haveAtleastOneParam = true;
 						}
 
-						for (decltype(funcDesc->cParams) iParam = 0; iParam < funcDesc->cParams; iParam++)
+						for (const auto& param : function.Params())
 						{
-							auto paramNameString = sanitizeReserved(paramNames[iParam]);
-							const auto& paramDesc = funcDesc->lprgelemdescParam[iParam];
-
-							if (outputMode == OutputMode::WINAPI_0_2 || iParam > 0)
+							if (haveAtleastOneParam)
 							{
 								std::wcout
 									<< L",";
 							}
 
+							const auto& paramDesc = param.Desc();
+
 							std::wcout
 								<< std::endl
-								<< L"        " << paramNameString << L": " << typeToString(paramDesc.tdesc, paramDesc.paramdesc.wParamFlags, typeInfo, outputMode);
+								<< L"        " << sanitizeReserved(param.Name()) << L": " << typeToString(paramDesc.tdesc, paramDesc.paramdesc.wParamFlags, typeInfo, outputMode);
+
+							haveAtleastOneParam = true;
 						}
 
-						if (funcDesc->elemdescFunc.tdesc.vt == VT_VOID)
+						if (function->elemdescFunc.tdesc.vt == VT_VOID)
 						{
 							// All HRESULT-returning functions are specified as returning void ???
-							funcDesc->elemdescFunc.tdesc.vt = VT_HRESULT;
+							std::wcout
+								<< std::endl
+								<< L"    ) -> " << wellKnownTypeToString(VT_HRESULT, outputMode);
 						}
-
-						std::wcout
-							<< std::endl
-							<< L"    ) -> " << typeToString(funcDesc->elemdescFunc.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode);
+						else
+						{
+							std::wcout
+								<< std::endl
+								<< L"    ) -> " << typeToString(function->elemdescFunc.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode);
+						}
 
 						break;
 
 					case INVOKEKIND::INVOKE_PROPERTYGET:
 					{
-						ASSERT(numFuncNamesReceived == 1 + funcDesc->cParams);
-
 						std::wcout
-							<< L"    fn get_" << funcNameString << L"(";
+							<< L"    fn get_" << funcName << L"(";
 
 						if (outputMode == OutputMode::WINAPI_0_2)
 						{
 							std::wcout
 								<< std::endl
 								<< L"        &mut self";
+
+							haveAtleastOneParam = true;
 						}
 
 						bool explicitRetVal = false;
 
-						for (decltype(funcDesc->cParams) iParam = 0; iParam < funcDesc->cParams; iParam++)
+						for (const auto& param : function.Params())
 						{
-							auto paramNameString = sanitizeReserved(paramNames[iParam]);
-							const auto& paramDesc = funcDesc->lprgelemdescParam[iParam];
-
-							if (outputMode == OutputMode::WINAPI_0_2 || iParam > 0)
+							if (haveAtleastOneParam)
 							{
 								std::wcout
 									<< L",";
 							}
 
+							const auto& paramDesc = param.Desc();
+
 							std::wcout
 								<< std::endl
-								<< L"        " << paramNameString << L": " << typeToString(paramDesc.tdesc, paramDesc.paramdesc.wParamFlags, typeInfo, outputMode);
+								<< L"        " << sanitizeReserved(param.Name()) << L": " << typeToString(paramDesc.tdesc, paramDesc.paramdesc.wParamFlags, typeInfo, outputMode);
 
-							if (paramDesc.paramdesc.wParamFlags & (PARAMFLAG_FRETVAL))
+							haveAtleastOneParam = true;
+
+							if (paramDesc.paramdesc.wParamFlags & PARAMFLAG_FRETVAL)
 							{
+								ASSERT(function->elemdescFunc.tdesc.vt == VARENUM::VT_HRESULT);
 								explicitRetVal = true;
 							}
 						}
 
 						if (explicitRetVal)
 						{
-							ASSERT(funcDesc->elemdescFunc.tdesc.vt == VT_HRESULT);
-
+							ASSERT(function->elemdescFunc.tdesc.vt == VT_HRESULT);
 							std::wcout
 								<< std::endl
-								<< L"    ) -> " << typeToString(funcDesc->elemdescFunc.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode);
+								<< L"    ) -> " << typeToString(function->elemdescFunc.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode);
 						}
 						else
 						{
-							if (funcDesc->cParams > 0)
+							if (haveAtleastOneParam)
 							{
 								std::wcout
 									<< L",";
@@ -462,7 +394,7 @@ int wmain(int argc, wchar_t* argv[])
 
 							std::wcout
 								<< std::endl
-								<< L"        value: *mut " << typeToString(funcDesc->elemdescFunc.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode) << std::endl
+								<< L"        value: *mut " << typeToString(function->elemdescFunc.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode) << std::endl
 								<< L"    ) -> " << wellKnownTypeToString(VT_HRESULT, outputMode);
 						}
 
@@ -471,21 +403,10 @@ int wmain(int argc, wchar_t* argv[])
 
 					case INVOKEKIND::INVOKE_PROPERTYPUT:
 					case INVOKEKIND::INVOKE_PROPERTYPUTREF:
-						if (numFuncNamesReceived == funcDesc->cParams)
-						{
-							ASSERT(paramNames[paramNames.size() - 1].GetBSTR() == nullptr);
-
-							paramNames[paramNames.size() - 1] = L"value";
-						}
-						else
-						{
-							ASSERT(numFuncNamesReceived == 1 + funcDesc->cParams);
-						}
-
 						std::wcout
 							<< L"    fn ";
 
-						if (funcDesc->invkind == INVOKE_PROPERTYPUT)
+						if (function->invkind == INVOKE_PROPERTYPUT)
 						{
 							std::wcout
 								<< "put_";
@@ -497,75 +418,72 @@ int wmain(int argc, wchar_t* argv[])
 						}
 
 						std::wcout
-							<< funcNameString << L"(";
+							<< funcName << L"(";
 
 						if (outputMode == OutputMode::WINAPI_0_2)
 						{
 							std::wcout
 								<< std::endl
 								<< L"        &mut self";
+
+							haveAtleastOneParam = true;
 						}
 
-						for (decltype(funcDesc->cParams) iParam = 0; iParam < funcDesc->cParams; iParam++)
+						for (const auto& param : function.Params())
 						{
-							auto paramNameString = sanitizeReserved(paramNames[iParam]);
-							const auto& paramDesc = funcDesc->lprgelemdescParam[iParam];
-
-							if (outputMode == OutputMode::WINAPI_0_2 || iParam > 0)
+							if (haveAtleastOneParam)
 							{
 								std::wcout
 									<< L",";
 							}
 
+							const auto& paramDesc = param.Desc();
+
 							std::wcout
 								<< std::endl
-								<< L"        " << paramNameString << L": " << typeToString(paramDesc.tdesc, paramDesc.paramdesc.wParamFlags, typeInfo, outputMode);
+								<< L"        " << sanitizeReserved(param.Name()) << L": " << typeToString(paramDesc.tdesc, paramDesc.paramdesc.wParamFlags, typeInfo, outputMode);
+
+							haveAtleastOneParam = true;
 						}
 
-						if (funcDesc->elemdescFunc.tdesc.vt == VT_VOID)
+						if (function->elemdescFunc.tdesc.vt == VT_VOID)
 						{
 							// HRESULT-returning function is specified as returning void ???
-							funcDesc->elemdescFunc.tdesc.vt = VT_HRESULT;
+							std::wcout
+								<< std::endl
+								<< L"    ) -> " << wellKnownTypeToString(VT_HRESULT, outputMode);
 						}
+						else
+						{
+							ASSERT(function->elemdescFunc.tdesc.vt == VT_HRESULT);
 
-						ASSERT(funcDesc->elemdescFunc.tdesc.vt == VT_HRESULT);
-
-						std::wcout
-							<< std::endl
-							<< L"    ) -> " << typeToString(funcDesc->elemdescFunc.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode);
+							std::wcout
+								<< std::endl
+								<< L"    ) -> " << typeToString(function->elemdescFunc.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode);
+						}
 
 						break;
 
 					default:
 						UNREACHABLE;
 					}
-
-					typeInfo->ReleaseFuncDesc(funcDesc);
 				}
 
-				for (decltype(typeAttributes->cVars) iMember = 0; iMember < typeAttributes->cVars; iMember++)
+				for (const auto& property : typeInfo.GetFields())
 				{
 					if (haveAtleastOneItem)
 					{
 						std::wcout
 							<< L"," << std::endl;
 					}
-
 					haveAtleastOneItem = true;
 
 					// Synthesize get_() and put_() functions for each property.
 
-					VARDESC* memberDesc;
-					TRY(typeInfo->GetVarDesc(iMember, &memberDesc));
-
-					bstr_t memberName;
-					UINT numMemberNamesReceived;
-					TRY(typeInfo->GetNames(memberDesc->memid, memberName.GetAddress(), 1, &numMemberNamesReceived));
-					ASSERT(numMemberNamesReceived == 1);
-					auto memberNameString = sanitizeReserved(memberName);
+					const auto propertyName = sanitizeReserved(property.Name());
 
 					std::wcout
-						<< L"    fn get_" << memberNameString << L"(" << std::endl;
+						<< L"    fn get_" << propertyName << L"(" << std::endl;
 
 					if (outputMode == OutputMode::WINAPI_0_2)
 					{
@@ -574,9 +492,9 @@ int wmain(int argc, wchar_t* argv[])
 					}
 
 					std::wcout
-						<< L"        value: *mut " << typeToString(memberDesc->elemdescVar.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode) << L"," << std::endl
+						<< L"        value: *mut " << typeToString(property.Type(), PARAMFLAG_FOUT, typeInfo, outputMode) << std::endl
 						<< L"    ) -> " << wellKnownTypeToString(VT_HRESULT, outputMode) << L"," << std::endl
-						<< L"    fn put_" << memberNameString << L"(" << std::endl;
+						<< L"    fn put_" << propertyName << L"(" << std::endl;
 
 					if (outputMode == OutputMode::WINAPI_0_2)
 					{
@@ -585,10 +503,8 @@ int wmain(int argc, wchar_t* argv[])
 					}
 
 					std::wcout
-						<< L"        value: " << typeToString(memberDesc->elemdescVar.tdesc, PARAMFLAG_FIN, typeInfo, outputMode) << L"," << std::endl
+						<< L"        value: " << typeToString(property.Type(), PARAMFLAG_FIN, typeInfo, outputMode) << std::endl
 						<< L"    ) -> " << wellKnownTypeToString(VT_HRESULT, outputMode);
-
-					typeInfo->ReleaseVarDesc(memberDesc);
 				}
 
 				switch (outputMode)
@@ -622,9 +538,7 @@ int wmain(int argc, wchar_t* argv[])
 
 			case TKIND_ALIAS:
 				std::wcout
-					<< L"type " << typeName << L" = " << typeToString(typeAttributes->tdescAlias, PARAMFLAG_FOUT, typeInfo, outputMode) << L";" << std::endl;
-
-				std::wcout
+					<< L"type " << typeName << L" = " << typeToString(attributes.tdescAlias, PARAMFLAG_FOUT, typeInfo, outputMode) << L";" << std::endl
 					<< std::endl;
 
 				break;
@@ -632,14 +546,14 @@ int wmain(int argc, wchar_t* argv[])
 			case TKIND_UNION:
 			{
 				std::wstring alignment;
-				switch (typeAttributes->cbAlignment)
+				switch (attributes.cbAlignment)
 				{
 				case 4: alignment = L"u32"; break;
 				case 8: alignment = L"u64"; break;
 				default: UNREACHABLE;
 				}
 
-				auto numAlignedElements = (typeAttributes->cbSizeInstance + typeAttributes->cbAlignment - 1) / typeAttributes->cbAlignment;
+				const auto numAlignedElements = (attributes.cbSizeInstance + attributes.cbAlignment - 1) / attributes.cbAlignment;
 				ASSERT(numAlignedElements > 0);
 
 				std::wstring wrappedType;
@@ -649,30 +563,20 @@ int wmain(int argc, wchar_t* argv[])
 				}
 				else
 				{
-					wrappedType = std::wstring(L"[") + alignment + L"; " + std::to_wstring(numAlignedElements) + L"]";
+					wrappedType = L"[" + alignment + L"; " + std::to_wstring(numAlignedElements) + L"]";
 				}
 
 				std::wcout
 					<< L"struct " << typeName << L"(" << wrappedType << L");" << std::endl;
 
-				for (decltype(typeAttributes->cVars) iMember = 0; iMember < typeAttributes->cVars; iMember++)
+				for (const auto& field : typeInfo.GetFields())
 				{
-					VARDESC* memberDesc;
-					TRY(typeInfo->GetVarDesc(iMember, &memberDesc));
-
-					bstr_t memberName;
-					UINT numMemberNamesReceived;
-					TRY(typeInfo->GetNames(memberDesc->memid, memberName.GetAddress(), 1, &numMemberNamesReceived));
-					ASSERT(numMemberNamesReceived == 1);
-					auto memberNameString = sanitizeReserved(memberName);
-
+					const auto fieldName = sanitizeReserved(field.Name());
 					std::wcout
 						<< L"UNION2!(" << typeName
-						<< L", " << memberNameString
-						<< L", " << memberNameString << L"_mut"
-						<< L", " << typeToString(memberDesc->elemdescVar.tdesc, PARAMFLAG_FOUT, typeInfo, outputMode) << L");" << std::endl;
-
-					typeInfo->ReleaseVarDesc(memberDesc);
+						<< L", " << fieldName
+						<< L", " << fieldName << L"_mut"
+						<< L", " << typeToString(field.Type(), PARAMFLAG_FOUT, typeInfo, outputMode) << L");" << std::endl;
 				}
 
 				std::wcout
@@ -687,21 +591,18 @@ int wmain(int argc, wchar_t* argv[])
 			unknown:
 				continue;
 
-				LPOLESTR guidOleString;
-				TRY(StringFromCLSID(typeAttributes->guid, &guidOleString));
-				auto guidString = std::wstring(guidOleString);
-				CoTaskMemFree(guidOleString);
+				LPOLESTR guid;
+				TRY(StringFromCLSID(attributes.guid, &guid));
 
 				std::wcout
-					<< L"#" << iTypeInfo
 					<< L" " << typeName
-					<< L" " << guidString << std::endl;
+					<< L" " << guid << std::endl;
+
+				CoTaskMemFree(guid);
 
 				std::wcout
 					<< std::endl;
 			}
-
-			typeInfo->ReleaseTypeAttr(typeAttributes);
 		}
 	}
 
