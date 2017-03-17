@@ -153,10 +153,10 @@ int wmain(int argc, wchar_t* argv[])
 			<< L"Usage: winapi-tlb-bindgen.exe [0.3] <filename>" << std::endl
 			<< std::endl
 			<< L"Example: Bindgen for msxml compatible with winapi v0.2" << std::endl
-			<< L"    winapi-tlb-bindgen.exe \"C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.14393.0\\um\\x64\\MsXml.Tlb\"" << std::endl
+			<< LR"(    winapi-tlb-bindgen.exe "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.14393.0\um\x64\MsXml.Tlb")" << std::endl
 			<< std::endl
 			<< L"Example: Bindgen for msxml compatible with winapi v0.3" << std::endl
-			<< L"    winapi-tlb-bindgen.exe 0.3 \"C:\\Program Files (x86)\\Windows Kits\\10\\Lib\\10.0.14393.0\\um\\x64\\MsXml.Tlb\"" << std::endl;
+			<< LR"(    winapi-tlb-bindgen.exe 0.3 "C:\Program Files (x86)\Windows Kits\10\Lib\10.0.14393.0\um\x64\MsXml.Tlb")" << std::endl;
 
 		std::exit(1);
 	}
