@@ -1,0 +1,11 @@
+[package]
+name = "winapi-tlb-bindgen"
+version = "0.1.0"
+authors = ["Arnavion <arnavion@gmail.com>"]
+
+[dependencies]
+clap = "2.21.x"
+winapi = { git = "https://github.com/Arnavion/winapi-rs/", rev = "8889f4f3fbfa766bd7306c6e63d5926406948816", features = ["objbase", "oleauto", "winerror"] }
+
+[profile.dev]
+panic = "abort"
