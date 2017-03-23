@@ -30,9 +30,15 @@ fn main() {
 		};
 
 		for type_info in type_lib.get_type_infos() {
-			let type_name = type_info.get_name();
+			let type_info = if type_info.attributes().typekind == ::winapi::um::oaidl::TKIND_DISPATCH {
+				type_info.get_interface_of_dispinterface().unwrap_or(type_info)
+			}
+			else {
+				type_info
+			};
 
 			let attributes = type_info.attributes();
+			let type_name = type_info.get_name();
 
 			match attributes.typekind {
 				::winapi::um::oaidl::TKIND_ENUM => {
@@ -66,8 +72,7 @@ fn main() {
 					// TODO
 				},
 
-				::winapi::um::oaidl::TKIND_INTERFACE |
-				::winapi::um::oaidl::TKIND_DISPATCH => {
+				::winapi::um::oaidl::TKIND_INTERFACE => {
 					println!("RIDL!{{#[uuid({})]", guid_to_uuid_attribute(&attributes.guid));
 					print!("interface {}({}Vtbl)", type_name, type_name);
 
@@ -130,15 +135,8 @@ fn main() {
 									have_atleast_one_param = true;
 								}
 
-								if (function_desc.elemdescFunc.tdesc.vt as ::winapi::shared::wtypes::VARENUM) == ::winapi::shared::wtypes::VT_VOID {
-									// All HRESULT-returning functions are specified as returning void ???
-									println!();
-									print!("    ) -> {}", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
-								}
-								else {
-									println!();
-									print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
-								}
+								println!();
+								print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
 							},
 
 							::winapi::um::oaidl::INVOKE_PROPERTYGET => {
@@ -208,15 +206,8 @@ fn main() {
 									have_atleast_one_param = true;
 								}
 
-								if (function_desc.elemdescFunc.tdesc.vt as ::winapi::shared::wtypes::VARENUM) == ::winapi::shared::wtypes::VT_VOID {
-									// All HRESULT-returning functions are specified as returning void ???
-									println!();
-									print!("    ) -> {}", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
-								}
-								else {
-									println!();
-									print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
-								}
+								println!();
+								print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
 							},
 
 							_ => unreachable!(),
@@ -244,6 +235,10 @@ fn main() {
 					println!();
 					println!("}}}}");
 					println!();
+				},
+
+				::winapi::um::oaidl::TKIND_DISPATCH => {
+					// TODO
 				},
 
 				::winapi::um::oaidl::TKIND_COCLASS => {

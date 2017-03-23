@@ -120,6 +120,28 @@ impl TypeInfo {
 		(*ref_type_info).Release();
 		result
 	}
+
+	pub unsafe fn get_interface_of_dispinterface(&self) -> Result<TypeInfo, ::winapi::um::winnt::HRESULT> {
+		let mut ref_type = 0;
+		let hr: ::winapi::um::winnt::HRESULT = (*self.ptr).GetRefTypeOfImplType(-1i32 as ::winapi::shared::minwindef::UINT, &mut ref_type);
+		match hr {
+			::winapi::shared::winerror::S_OK => {
+				let mut type_info = ::std::ptr::null_mut();
+				assert_succeeded!((*self.ptr).GetRefTypeInfo(ref_type, &mut type_info));
+				let result = TypeInfo::new(type_info);
+				(*type_info).Release();
+
+				Ok(result)
+			},
+
+			// TODO: Why does this fail? Eg for XMLDOMDocumentEvents
+			::winapi::shared::winerror::TYPE_E_ELEMENTNOTFOUND => Err(hr),
+
+			::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY => ::std::process::exit(hr),
+
+			_ => unreachable!(),
+		}
+	}
 }
 
 impl ::std::ops::Drop for TypeInfo {
