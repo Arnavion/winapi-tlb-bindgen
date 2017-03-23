@@ -122,8 +122,6 @@ quick_main!(|| -> ::error::Result<()> {
 
 					println!(" {{");
 
-					let mut have_atleast_one_item = false;
-
 					for function in type_info.get_functions() {
 						let function = function?;
 
@@ -134,58 +132,34 @@ quick_main!(|| -> ::error::Result<()> {
 							continue;
 						}
 
-						if have_atleast_one_item {
-							println!(",");
-						}
-						have_atleast_one_item = true;
-
 						assert_ne!(function_desc.funckind, ::winapi::um::oaidl::FUNC_STATIC);
 
 						let function_name = function.get_name();
 
-						let mut have_atleast_one_param = false;
-
 						match function_desc.invkind {
 							::winapi::um::oaidl::INVOKE_FUNC => {
-								print!("    fn {}(", function_name);
+								println!("    fn {}(", function_name);
 
 								for param in function.params() {
-									if have_atleast_one_param {
-										print!(",");
-									}
-
 									let param_desc = param.desc();
-
-									println!();
-									print!("        {}: {}",
+									println!("        {}: {},",
 										sanitize_reserved(param.get_name()),
 										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
-
-									have_atleast_one_param = true;
 								}
 
-								println!();
-								print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+								println!("    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 							},
 
 							::winapi::um::oaidl::INVOKE_PROPERTYGET => {
-								print!("    fn get_{}(", function_name);
+								println!("    fn get_{}(", function_name);
 
 								let mut explicit_ret_val = false;
 
 								for param in function.params() {
-									if have_atleast_one_param {
-										print!(",");
-									}
-
 									let param_desc = param.desc();
-
-									println!();
-									print!("        {}: {}",
+									println!("        {}: {},",
 										sanitize_reserved(param.get_name()),
 										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
-
-									have_atleast_one_param = true;
 
 									if ((param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == ::winapi::um::oaidl::PARAMFLAG_FRETVAL
 									{
@@ -196,17 +170,11 @@ quick_main!(|| -> ::error::Result<()> {
 
 								if explicit_ret_val {
 									assert_eq!(function_desc.elemdescFunc.tdesc.vt, ::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE);
-									println!();
-									print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+									println!("    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 								}
 								else {
-									if have_atleast_one_param {
-										print!(",");
-									}
-
-									println!();
-									println!("        value: *mut {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
-									print!("    ) -> {}", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
+									println!("        value: *mut {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+									println!("    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
 								}
 							},
 
@@ -218,25 +186,16 @@ quick_main!(|| -> ::error::Result<()> {
 									::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => print!("putref_"),
 									_ => unreachable!(),
 								}
-								print!("{}(", function_name);
+								println!("{}(", function_name);
 
 								for param in function.params() {
-									if have_atleast_one_param {
-										print!(",");
-									}
-
 									let param_desc = param.desc();
-
-									println!();
-									print!("        {}: {}",
+									println!("        {}: {},",
 										sanitize_reserved(param.get_name()),
 										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
-
-									have_atleast_one_param = true;
 								}
 
-								println!();
-								print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+								println!("    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 							},
 
 							_ => unreachable!(),
@@ -246,24 +205,18 @@ quick_main!(|| -> ::error::Result<()> {
 					for property in type_info.get_fields() {
 						let property = property?;
 
-						if have_atleast_one_item {
-							println!(",");
-						}
-						have_atleast_one_item = true;
-
 						// Synthesize get_() and put_() functions for each property.
 
 						let property_name = sanitize_reserved(property.get_name());
 
 						println!("    fn get_{}(", property_name);
-						println!("        value: *mut {}", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+						println!("        value: *mut {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 						println!("    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
 						println!("    fn put_{}(", property_name);
-						println!("        value: {}", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FIN, &type_info)?);
-						print!("    ) -> {}", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
+						println!("        value: {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FIN, &type_info)?);
+						println!("    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
 					}
 
-					println!();
 					println!("}}}}");
 					println!();
 				},
