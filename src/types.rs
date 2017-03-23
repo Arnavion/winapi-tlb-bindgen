@@ -1,4 +1,23 @@
 #[derive(Debug)]
+pub struct CoInitializer;
+
+impl CoInitializer {
+	pub unsafe fn new() -> ::error::Result<CoInitializer> {
+		::error::to_result(
+			::winapi::um::objbase::CoInitialize(::std::ptr::null_mut()))
+			.map(|_| CoInitializer)
+	}
+}
+
+impl ::std::ops::Drop for CoInitializer {
+	fn drop(&mut self) {
+		unsafe {
+			::winapi::um::combaseapi::CoUninitialize();
+		}
+	}
+}
+
+#[derive(Debug)]
 pub struct TypeLib {
 	ptr: *mut ::winapi::um::oaidl::ITypeLib,
 }
@@ -49,7 +68,7 @@ impl ::std::ops::Drop for TypeInfos {
 }
 
 impl Iterator for TypeInfos {
-	type Item = TypeInfo;
+	type Item = ::error::Result<TypeInfo>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.count {
@@ -58,9 +77,13 @@ impl Iterator for TypeInfos {
 
 		unsafe {
 			let mut type_info = ::std::ptr::null_mut();
-			assert_succeeded!((*self.type_lib).GetTypeInfo(self.index, &mut type_info));
-			let result = TypeInfo::new(type_info);
-			(*type_info).Release();
+			let result = ::error::to_result(
+				(*self.type_lib).GetTypeInfo(self.index, &mut type_info))
+				.and_then(|_| {
+					let result = TypeInfo::new(type_info);
+					(*type_info).Release();
+					result
+				});
 
 			self.index += 1;
 
@@ -77,16 +100,26 @@ pub struct TypeInfo {
 }
 
 impl TypeInfo {
-	pub unsafe fn new(ptr: *mut ::winapi::um::oaidl::ITypeInfo) -> TypeInfo {
+	pub unsafe fn new(ptr: *mut ::winapi::um::oaidl::ITypeInfo) -> ::error::Result<TypeInfo> {
 		(*ptr).AddRef();
 
 		let mut name = ::std::ptr::null_mut();
-		assert_succeeded!((*ptr).GetDocumentation(::winapi::um::oleauto::MEMBERID_NIL, &mut name, ::std::ptr::null_mut(), ::std::ptr::null_mut(), ::std::ptr::null_mut()));
-
 		let mut type_attr = ::std::ptr::null_mut();
-		assert_succeeded!((*ptr).GetTypeAttr(&mut type_attr));
 
-		TypeInfo { ptr, name, type_attr }
+		::error::to_result(
+			(*ptr).GetDocumentation(::winapi::um::oleauto::MEMBERID_NIL, &mut name, ::std::ptr::null_mut(), ::std::ptr::null_mut(), ::std::ptr::null_mut()))
+			.and_then(|_| ::error::to_result((*ptr).GetTypeAttr(&mut type_attr)))
+			.map(|_| {
+				TypeInfo { ptr, name, type_attr }
+			}).map_err(|err| {
+				if !name.is_null() {
+					::winapi::um::oleauto::SysFreeString(name);
+				}
+
+				(*ptr).Release();
+
+				err
+			})
 	}
 
 	pub unsafe fn get_name(&self) -> String {
@@ -113,34 +146,30 @@ impl TypeInfo {
 		Parents::new(self.ptr, &*self.type_attr)
 	}
 
-	pub unsafe fn get_ref_type_info(&self, ref_type: ::winapi::um::oaidl::HREFTYPE) -> TypeInfo {
+	pub unsafe fn get_ref_type_info(&self, ref_type: ::winapi::um::oaidl::HREFTYPE) -> ::error::Result<TypeInfo> {
 		let mut ref_type_info = ::std::ptr::null_mut();
-		assert_succeeded!((*self.ptr).GetRefTypeInfo(ref_type, &mut ref_type_info));
-		let result = TypeInfo::new(ref_type_info);
-		(*ref_type_info).Release();
-		result
+
+		::error::to_result(
+			(*self.ptr).GetRefTypeInfo(ref_type, &mut ref_type_info))
+			.and_then(|_| {
+				let result = TypeInfo::new(ref_type_info);
+				(*ref_type_info).Release();
+				result
+			})
 	}
 
-	pub unsafe fn get_interface_of_dispinterface(&self) -> Result<TypeInfo, ::winapi::um::winnt::HRESULT> {
+	pub unsafe fn get_interface_of_dispinterface(&self) -> ::error::Result<TypeInfo> {
 		let mut ref_type = 0;
-		let hr: ::winapi::um::winnt::HRESULT = (*self.ptr).GetRefTypeOfImplType(-1i32 as ::winapi::shared::minwindef::UINT, &mut ref_type);
-		match hr {
-			::winapi::shared::winerror::S_OK => {
-				let mut type_info = ::std::ptr::null_mut();
-				assert_succeeded!((*self.ptr).GetRefTypeInfo(ref_type, &mut type_info));
+		let mut type_info = ::std::ptr::null_mut();
+
+		::error::to_result(
+			(*self.ptr).GetRefTypeOfImplType(-1i32 as ::winapi::shared::minwindef::UINT, &mut ref_type))
+			.and_then(|_| ::error::to_result((*self.ptr).GetRefTypeInfo(ref_type, &mut type_info)))
+			.and_then(|_| {
 				let result = TypeInfo::new(type_info);
 				(*type_info).Release();
-
-				Ok(result)
-			},
-
-			// TODO: Why does this fail? Eg for XMLDOMDocumentEvents
-			::winapi::shared::winerror::TYPE_E_ELEMENTNOTFOUND => Err(hr),
-
-			::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY => ::std::process::exit(hr),
-
-			_ => unreachable!(),
-		}
+				result
+			})
 	}
 }
 
@@ -181,7 +210,7 @@ impl ::std::ops::Drop for Vars {
 }
 
 impl Iterator for Vars {
-	type Item = Var;
+	type Item = ::error::Result<Var>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.count {
@@ -203,22 +232,34 @@ pub struct Var {
 }
 
 impl Var {
-	pub unsafe fn new(type_info: *mut ::winapi::um::oaidl::ITypeInfo, index: ::winapi::shared::minwindef::UINT) -> Var {
+	pub unsafe fn new(type_info: *mut ::winapi::um::oaidl::ITypeInfo, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Var> {
 		(*type_info).AddRef();
 
 		let mut desc = ::std::ptr::null_mut();
-		assert_succeeded!((*type_info).GetVarDesc(index, &mut desc));
-
 		let mut num_names_received = 0;
 		let mut name = ::std::ptr::null_mut();
-		assert_succeeded!((*type_info).GetNames((*desc).memid, &mut name, 1, &mut num_names_received));
-		assert_eq!(num_names_received, 1);
 
-		Var {
-			type_info,
-			name,
-			desc,
-		}
+		::error::to_result(
+			(*type_info).GetVarDesc(index, &mut desc))
+			.and_then(|_| ::error::to_result((*type_info).GetNames((*desc).memid, &mut name, 1, &mut num_names_received)))
+			.map(|_| {
+				assert_eq!(num_names_received, 1);
+
+				Var {
+					type_info,
+					name,
+					desc,
+				}
+			})
+			.map_err(|err| {
+				if !desc.is_null() {
+					(*type_info).ReleaseVarDesc(desc);
+				}
+
+				(*type_info).Release();
+
+				err
+			})
 	}
 
 	pub unsafe fn get_name(&self) -> String {
@@ -267,7 +308,7 @@ impl ::std::ops::Drop for Fields {
 }
 
 impl Iterator for Fields {
-	type Item = Field;
+	type Item = ::error::Result<Field>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.count {
@@ -289,22 +330,34 @@ pub struct Field {
 }
 
 impl Field {
-	pub unsafe fn new(type_info: *mut ::winapi::um::oaidl::ITypeInfo, index: ::winapi::shared::minwindef::UINT) -> Field {
+	pub unsafe fn new(type_info: *mut ::winapi::um::oaidl::ITypeInfo, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Field> {
 		(*type_info).AddRef();
 
 		let mut desc = ::std::ptr::null_mut();
-		assert_succeeded!((*type_info).GetVarDesc(index, &mut desc));
-
 		let mut num_names_received = 0;
 		let mut name = ::std::ptr::null_mut();
-		assert_succeeded!((*type_info).GetNames((*desc).memid, &mut name, 1, &mut num_names_received));
-		assert_eq!(num_names_received, 1);
 
-		Field {
-			type_info,
-			name,
-			desc,
-		}
+		::error::to_result(
+			(*type_info).GetVarDesc(index, &mut desc))
+			.and_then(|_| ::error::to_result((*type_info).GetNames((*desc).memid, &mut name, 1, &mut num_names_received)))
+			.map(|_| {
+				assert_eq!(num_names_received, 1);
+
+				Field {
+					type_info,
+					name,
+					desc,
+				}
+			})
+			.map_err(|err| {
+				if !desc.is_null() {
+					(*type_info).ReleaseVarDesc(desc);
+				}
+
+				(*type_info).Release();
+
+				err
+			})
 	}
 
 	pub unsafe fn get_name(&self) -> String {
@@ -353,7 +406,7 @@ impl ::std::ops::Drop for Functions {
 }
 
 impl Iterator for Functions {
-	type Item = Function;
+	type Item = ::error::Result<Function>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.count {
@@ -376,56 +429,72 @@ pub struct Function {
 }
 
 impl Function {
-	pub unsafe fn new(type_info: *mut ::winapi::um::oaidl::ITypeInfo, index: ::winapi::shared::minwindef::UINT) -> Function {
+	pub unsafe fn new(type_info: *mut ::winapi::um::oaidl::ITypeInfo, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Function> {
 		(*type_info).AddRef();
 
 		let mut desc = ::std::ptr::null_mut();
-		assert_succeeded!((*type_info).GetFuncDesc(index, &mut desc));
-
-		let mut names = vec![::std::ptr::null_mut(); (1 + (*desc).cParams) as usize];
 		let mut num_names_received = 0;
-		assert_succeeded!((*type_info).GetNames((*desc).memid, names.as_mut_ptr(), names.len() as ::winapi::shared::minwindef::UINT, &mut num_names_received));
-		assert!(num_names_received >= 1);
 
-		let name = names.remove(0);
+		::error::to_result(
+			(*type_info).GetFuncDesc(index, &mut desc))
+			.and_then(|_| {
+				let mut names = vec![::std::ptr::null_mut(); (1 + (*desc).cParams) as usize];
+				::error::to_result(
+					(*type_info).GetNames((*desc).memid, names.as_mut_ptr(), names.len() as ::winapi::shared::minwindef::UINT, &mut num_names_received))
+					.map(|_| names)
+			})
+			.map(|mut names| {
+				assert!(num_names_received >= 1);
 
-		match (*desc).invkind {
-			::winapi::um::oaidl::INVOKE_FUNC |
-			::winapi::um::oaidl::INVOKE_PROPERTYGET =>
-				assert_eq!(num_names_received, 1 + (*desc).cParams as ::winapi::shared::minwindef::UINT),
+				let name = names.remove(0);
 
-			::winapi::um::oaidl::INVOKE_PROPERTYPUT |
-			::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => {
-				if num_names_received == (*desc).cParams as ::winapi::shared::minwindef::UINT {
-					let last = names.last_mut().unwrap();
-					assert_eq!(*last, ::std::ptr::null_mut());
+				match (*desc).invkind {
+					::winapi::um::oaidl::INVOKE_FUNC |
+					::winapi::um::oaidl::INVOKE_PROPERTYGET =>
+						assert_eq!(num_names_received, 1 + (*desc).cParams as ::winapi::shared::minwindef::UINT),
 
-					let param_name: ::std::ffi::OsString = "value".to_string().into();
-					let param_name = ::std::os::windows::ffi::OsStrExt::encode_wide(&param_name as &::std::ffi::OsStr);
-					let mut param_name: Vec<_> = param_name.collect();
-					param_name.push(0);
-					*last = ::winapi::um::oleauto::SysAllocString(param_name.as_ptr());
+					::winapi::um::oaidl::INVOKE_PROPERTYPUT |
+					::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => {
+						if num_names_received == (*desc).cParams as ::winapi::shared::minwindef::UINT {
+							let last = names.last_mut().unwrap();
+							assert_eq!(*last, ::std::ptr::null_mut());
+
+							let param_name: ::std::ffi::OsString = "value".to_string().into();
+							let param_name = ::std::os::windows::ffi::OsStrExt::encode_wide(&param_name as &::std::ffi::OsStr);
+							let mut param_name: Vec<_> = param_name.collect();
+							param_name.push(0);
+							*last = ::winapi::um::oleauto::SysAllocString(param_name.as_ptr());
+						}
+						else {
+							assert_eq!(num_names_received, 1 + (*desc).cParams as ::winapi::shared::minwindef::UINT)
+						}
+					},
+
+					_ => unreachable!(),
 				}
-				else {
-					assert_eq!(num_names_received, 1 + (*desc).cParams as ::winapi::shared::minwindef::UINT)
+
+				assert_eq!(names.len(), (*desc).cParams as usize);
+
+				let param_descs = (*desc).lprgelemdescParam;
+
+				let params = names.into_iter().enumerate().map(|(index, name)| Param { name, desc: param_descs.offset(index as isize) }).collect();
+
+				Function {
+					type_info,
+					name,
+					desc,
+					params,
 				}
-			},
+			})
+			.map_err(|err| {
+				if !desc.is_null() {
+					(*type_info).ReleaseFuncDesc(desc);
+				}
 
-			_ => unreachable!(),
-		}
+				(*type_info).Release();
 
-		assert_eq!(names.len(), (*desc).cParams as usize);
-
-		let param_descs = (*desc).lprgelemdescParam;
-
-		let params = names.into_iter().enumerate().map(|(index, name)| Param { name, desc: param_descs.offset(index as isize) }).collect();
-
-		Function {
-			type_info,
-			name,
-			desc,
-			params,
-		}
+				err
+			})
 	}
 
 	pub unsafe fn get_name(&self) -> String {
@@ -501,7 +570,7 @@ impl ::std::ops::Drop for Parents {
 }
 
 impl Iterator for Parents {
-	type Item = TypeInfo;
+	type Item = ::error::Result<TypeInfo>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.count {
@@ -510,12 +579,16 @@ impl Iterator for Parents {
 
 		unsafe {
 			let mut parent_ref_type = 0;
-			assert_succeeded!((*self.type_info).GetRefTypeOfImplType(self.index as ::winapi::shared::minwindef::UINT, &mut parent_ref_type));
-
 			let mut parent_type_info = ::std::ptr::null_mut();
-			assert_succeeded!((*self.type_info).GetRefTypeInfo(parent_ref_type, &mut parent_type_info));
-			let result = TypeInfo::new(parent_type_info);
-			(*parent_type_info).Release();
+
+			let result = ::error::to_result(
+				(*self.type_info).GetRefTypeOfImplType(self.index as ::winapi::shared::minwindef::UINT, &mut parent_ref_type))
+				.and_then(|_| ::error::to_result((*self.type_info).GetRefTypeInfo(parent_ref_type, &mut parent_type_info)))
+				.and_then(|_| {
+					let result = TypeInfo::new(parent_type_info);
+					(*parent_type_info).Release();
+					result
+				});
 
 			self.index += 1;
 

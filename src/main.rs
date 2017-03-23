@@ -1,12 +1,15 @@
 #[macro_use]
 extern crate clap;
+#[macro_use]
+extern crate error_chain;
+#[macro_use]
+extern crate derive_error_chain;
 extern crate winapi;
 
-#[macro_use]
-mod macros;
+mod error;
 mod types;
 
-fn main() {
+quick_main!(|| -> ::error::Result<()> {
 	let app = clap_app! {
 		@app (app_from_crate!())
 		(@arg filename: +required index(1) "filename")
@@ -19,19 +22,32 @@ fn main() {
 	filename.push(0);
 
 	unsafe {
-		assert_succeeded!(::winapi::um::objbase::CoInitialize(::std::ptr::null_mut()));
+		let _coinitializer = ::types::CoInitializer::new();
 
 		let type_lib = {
 			let mut type_lib_ptr = ::std::ptr::null_mut();
-			assert_succeeded!(::winapi::um::oleauto::LoadTypeLibEx(filename.as_ptr(), ::winapi::um::oleauto::REGKIND_NONE, &mut type_lib_ptr));
+			::error::to_result(::winapi::um::oleauto::LoadTypeLibEx(filename.as_ptr(), ::winapi::um::oleauto::REGKIND_NONE, &mut type_lib_ptr))?;
 			let type_lib = types::TypeLib::new(type_lib_ptr);
 			(*type_lib_ptr).Release();
 			type_lib
 		};
 
 		for type_info in type_lib.get_type_infos() {
+			let type_info = match type_info {
+				Ok(type_info) => type_info,
+				Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => continue,
+				err => err?,
+			};
+
 			let type_info = if type_info.attributes().typekind == ::winapi::um::oaidl::TKIND_DISPATCH {
-				type_info.get_interface_of_dispinterface().unwrap_or(type_info)
+				match type_info.get_interface_of_dispinterface() {
+					Ok(type_info) => type_info,
+
+					// TODO: Eg msxml::XMLDOMDocumentEvents. Why? Because it's a pure dispinterface?
+					Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_ELEMENTNOTFOUND), _)) => type_info,
+
+					err => err?,
+				}
 			}
 			else {
 				type_info
@@ -45,6 +61,8 @@ fn main() {
 					println!("ENUM! {{ enum {} {{", type_name);
 
 					for member in type_info.get_vars() {
+						let member = member?;
+
 						print!("    {} = ", sanitize_reserved(member.get_name()));
 						let value = member.value();
 						match *value.vt() as ::winapi::shared::wtypes::VARENUM {
@@ -61,6 +79,8 @@ fn main() {
 					println!("STRUCT! {{ struct {} {{", type_name);
 
 					for field in type_info.get_fields() {
+						let field = field?;
+
 						println!("    {}: {},", sanitize_reserved(field.get_name()), type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
 					}
 
@@ -80,6 +100,8 @@ fn main() {
 					let mut parents_vtbl_size = 0;
 
 					for parent in type_info.get_parents() {
+						let parent = parent?;
+
 						let parent_name = parent.get_name();
 
 						if have_parents {
@@ -98,6 +120,8 @@ fn main() {
 					let mut have_atleast_one_item = false;
 
 					for function in type_info.get_functions() {
+						let function = function?;
+
 						let function_desc = function.desc();
 
 						if (function_desc.oVft as u16) < parents_vtbl_size {
@@ -215,6 +239,8 @@ fn main() {
 					}
 
 					for property in type_info.get_fields() {
+						let property = property?;
+
 						if have_atleast_one_item {
 							println!(",");
 						}
@@ -268,6 +294,8 @@ fn main() {
 					println!("    {},", wrapped_type);
 
 					for field in type_info.get_fields() {
+						let field = field?;
+
 						let field_name = sanitize_reserved(field.get_name());
 						println!("    {} {}_mut: {},", field_name, field_name, type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
 					}
@@ -281,8 +309,10 @@ fn main() {
 		}
 
 		::winapi::um::combaseapi::CoUninitialize();
+
+		Ok(())
 	}
-}
+});
 
 fn sanitize_reserved(s: String) -> String {
 	match s.as_ref() {
@@ -311,7 +341,9 @@ unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32
 		},
 
 		::winapi::shared::wtypes::VT_USERDEFINED =>
-			type_info.get_ref_type_info(*type_.hreftype()).get_name(),
+			type_info.get_ref_type_info(*type_.hreftype())
+			.map(|ref_type_info| ref_type_info.get_name())
+			.unwrap_or_else(|_| "__missing_type__".to_string()),
 
 		_ => well_known_type_to_string(type_.vt).to_string(),
 	}

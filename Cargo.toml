@@ -5,6 +5,8 @@ authors = ["Arnavion <arnavion@gmail.com>"]
 
 [dependencies]
 clap = "2.21.x"
+derive-error-chain = "0.10.x"
+error-chain = "0.10.x"
 winapi = { git = "https://github.com/retep998/winapi-rs/", rev = "96c9334207e0cf0b8da535455e29eda46d675bbb", features = ["objbase", "oleauto", "winerror"] }
 
 [profile.dev]
