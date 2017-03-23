@@ -12,3 +12,7 @@ Generates bindings to COM interfaces / enums in the style of [winapi-rs v0.3](ht
 1. ???
 
 1. Profit
+
+---
+
+Since winapi-rs v0.3 is still in development, the output of this binary can only be guaranteed to work with the same commit as the one in Cargo.toml.
