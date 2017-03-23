@@ -321,6 +321,7 @@ quick_main!(|| -> ::error::Result<()> {
 
 fn sanitize_reserved(s: String) -> String {
 	match s.as_ref() {
+		"impl" => "impl_".to_string(),
 		"type" => "type_".to_string(),
 		_ => s,
 	}
