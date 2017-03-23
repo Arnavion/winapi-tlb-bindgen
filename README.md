@@ -12,7 +12,3 @@ Generates bindings to COM interfaces / enums in the style of [winapi-rs v0.3](ht
 1. ???
 
 1. Profit
-
----
-
-Currently uses a fork of winapi to add some missing OLE API.
