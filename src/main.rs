@@ -9,6 +9,8 @@ extern crate winapi;
 mod error;
 mod types;
 
+use ::std::io::Write;
+
 quick_main!(|| -> ::error::Result<()> {
 	let app = clap_app! {
 		@app (app_from_crate!())
@@ -35,7 +37,10 @@ quick_main!(|| -> ::error::Result<()> {
 		for type_info in type_lib.get_type_infos() {
 			let type_info = match type_info {
 				Ok(type_info) => type_info,
-				Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => continue,
+				Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
+					writeln!(&mut ::std::io::stderr(), "Could not find type. Skipping...").unwrap();
+					continue;
+				},
 				err => err?,
 			};
 
@@ -81,7 +86,7 @@ quick_main!(|| -> ::error::Result<()> {
 					for field in type_info.get_fields() {
 						let field = field?;
 
-						println!("    {}: {},", sanitize_reserved(field.get_name()), type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
+						println!("    {}: {},", sanitize_reserved(field.get_name()), type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 					}
 
 					println!("}}}}");
@@ -154,13 +159,13 @@ quick_main!(|| -> ::error::Result<()> {
 									println!();
 									print!("        {}: {}",
 										sanitize_reserved(param.get_name()),
-										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info));
+										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 
 									have_atleast_one_param = true;
 								}
 
 								println!();
-								print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
+								print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 							},
 
 							::winapi::um::oaidl::INVOKE_PROPERTYGET => {
@@ -178,7 +183,7 @@ quick_main!(|| -> ::error::Result<()> {
 									println!();
 									print!("        {}: {}",
 										sanitize_reserved(param.get_name()),
-										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info));
+										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 
 									have_atleast_one_param = true;
 
@@ -192,7 +197,7 @@ quick_main!(|| -> ::error::Result<()> {
 								if explicit_ret_val {
 									assert_eq!(function_desc.elemdescFunc.tdesc.vt, ::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE);
 									println!();
-									print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
+									print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 								}
 								else {
 									if have_atleast_one_param {
@@ -200,7 +205,7 @@ quick_main!(|| -> ::error::Result<()> {
 									}
 
 									println!();
-									println!("        value: *mut {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
+									println!("        value: *mut {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 									print!("    ) -> {}", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
 								}
 							},
@@ -225,13 +230,13 @@ quick_main!(|| -> ::error::Result<()> {
 									println!();
 									print!("        {}: {}",
 										sanitize_reserved(param.get_name()),
-										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info));
+										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 
 									have_atleast_one_param = true;
 								}
 
 								println!();
-								print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
+								print!("    ) -> {}", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 							},
 
 							_ => unreachable!(),
@@ -251,10 +256,10 @@ quick_main!(|| -> ::error::Result<()> {
 						let property_name = sanitize_reserved(property.get_name());
 
 						println!("    fn get_{}(", property_name);
-						println!("        value: *mut {}", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
+						println!("        value: *mut {}", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 						println!("    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
 						println!("    fn put_{}(", property_name);
-						println!("        value: {}", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FIN, &type_info));
+						println!("        value: {}", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FIN, &type_info)?);
 						print!("    ) -> {}", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
 					}
 
@@ -272,7 +277,7 @@ quick_main!(|| -> ::error::Result<()> {
 				},
 
 				::winapi::um::oaidl::TKIND_ALIAS => {
-					println!("type {} = {};", type_name, type_to_string(&attributes.tdescAlias, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
+					println!("type {} = {};", type_name, type_to_string(&attributes.tdescAlias, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 					println!();
 				},
 
@@ -297,7 +302,7 @@ quick_main!(|| -> ::error::Result<()> {
 						let field = field?;
 
 						let field_name = sanitize_reserved(field.get_name());
-						println!("    {} {}_mut: {},", field_name, field_name, type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info));
+						println!("    {} {}_mut: {},", field_name, field_name, type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 					}
 
 					println!("}}}}");
@@ -321,31 +326,36 @@ fn sanitize_reserved(s: String) -> String {
 	}
 }
 
-unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32, type_info: &types::TypeInfo) -> String {
+unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32, type_info: &types::TypeInfo) -> ::error::Result<String> {
 	match type_.vt as ::winapi::shared::wtypes::VARENUM {
 		::winapi::shared::wtypes::VT_PTR =>
 			if (param_flags & ::winapi::um::oaidl::PARAMFLAG_FIN) == ::winapi::um::oaidl::PARAMFLAG_FIN && (param_flags & ::winapi::um::oaidl::PARAMFLAG_FOUT) == 0 {
 				// [in] => *const
-				format!("*const {}", type_to_string(&**type_.lptdesc(), param_flags, type_info))
+				type_to_string(&**type_.lptdesc(), param_flags, type_info).map(|type_name| format!("*const {}", type_name))
 			}
 			else {
 				// [in, out] => *mut
 				// [] => *mut (Some functions like IXMLError::GetErrorInfo don't annotate [out] on their out parameter)
-				format!("*mut {}", type_to_string(&**type_.lptdesc(), param_flags, type_info))
+				type_to_string(&**type_.lptdesc(), param_flags, type_info).map(|type_name| format!("*mut {}", type_name))
 			},
 
 		::winapi::shared::wtypes::VT_CARRAY => {
 			assert_eq!((**type_.lpadesc()).cDims, 1);
 
-			format!("[{}; {}]", type_to_string(&(**type_.lpadesc()).tdescElem, param_flags, type_info), (**type_.lpadesc()).rgbounds[0].cElements)
+			type_to_string(&(**type_.lpadesc()).tdescElem, param_flags, type_info).map(|type_name| format!("[{}; {}]", type_name, (**type_.lpadesc()).rgbounds[0].cElements))
 		},
 
 		::winapi::shared::wtypes::VT_USERDEFINED =>
-			type_info.get_ref_type_info(*type_.hreftype())
-			.map(|ref_type_info| ref_type_info.get_name())
-			.unwrap_or_else(|_| "__missing_type__".to_string()),
+			match type_info.get_ref_type_info(*type_.hreftype()).map(|ref_type_info| ref_type_info.get_name()) {
+				Ok(ref_type_name) => Ok(ref_type_name),
+				Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
+					writeln!(&mut ::std::io::stderr(), "Could not find referenced type. Replacing with `__missing_type__`").unwrap();
+					Ok("__missing_type__".to_string())
+				},
+				err => err,
+			},
 
-		_ => well_known_type_to_string(type_.vt).to_string(),
+		_ => Ok(well_known_type_to_string(type_.vt).to_string()),
 	}
 }
 
