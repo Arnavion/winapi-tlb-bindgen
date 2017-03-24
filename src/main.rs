@@ -7,6 +7,7 @@ extern crate derive_error_chain;
 extern crate winapi;
 
 mod error;
+mod rc;
 mod types;
 
 use ::std::io::Write;
@@ -19,12 +20,10 @@ quick_main!(|| -> ::error::Result<()> {
 
 	let matches = app.get_matches();
 	let filename = matches.value_of_os("filename").unwrap();
-	let filename = ::std::os::windows::ffi::OsStrExt::encode_wide(filename);
-	let mut filename: Vec<_> = filename.collect();
-	filename.push(0);
+	let filename = os_str_to_wstring(filename);
 
 	unsafe {
-		let _coinitializer = ::types::CoInitializer::new();
+		let _coinitializer = ::rc::CoInitializer::new();
 
 		let type_lib = {
 			let mut type_lib_ptr = ::std::ptr::null_mut();
@@ -59,16 +58,16 @@ quick_main!(|| -> ::error::Result<()> {
 			};
 
 			let attributes = type_info.attributes();
-			let type_name = type_info.get_name();
+			let type_name = type_info.name();
 
 			match attributes.typekind {
 				::winapi::um::oaidl::TKIND_ENUM => {
-					println!("ENUM! {{ enum {} {{", type_name);
+					println!("ENUM!{{enum {} {{", type_name);
 
 					for member in type_info.get_vars() {
 						let member = member?;
 
-						print!("    {} = ", sanitize_reserved(member.get_name()));
+						print!("    {} = ", sanitize_reserved(member.name()));
 						let value = member.value();
 						match *value.vt() as ::winapi::shared::wtypes::VARENUM {
 							::winapi::shared::wtypes::VT_I4 => println!("{},", value.lVal()),
@@ -81,12 +80,12 @@ quick_main!(|| -> ::error::Result<()> {
 				},
 
 				::winapi::um::oaidl::TKIND_RECORD => {
-					println!("STRUCT! {{ struct {} {{", type_name);
+					println!("STRUCT!{{struct {} {{", type_name);
 
 					for field in type_info.get_fields() {
 						let field = field?;
 
-						println!("    {}: {},", sanitize_reserved(field.get_name()), type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+						println!("    {}: {},", sanitize_reserved(field.name()), type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 					}
 
 					println!("}}}}");
@@ -98,7 +97,10 @@ quick_main!(|| -> ::error::Result<()> {
 				},
 
 				::winapi::um::oaidl::TKIND_INTERFACE => {
-					println!("RIDL!{{#[uuid({})]", guid_to_uuid_attribute(&attributes.guid));
+					println!("RIDL!{{#[uuid(0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x})]",
+						attributes.guid.Data1, attributes.guid.Data2, attributes.guid.Data3,
+						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
+						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7]);
 					print!("interface {}({}Vtbl)", type_name, type_name);
 
 					let mut have_parents = false;
@@ -107,7 +109,7 @@ quick_main!(|| -> ::error::Result<()> {
 					for parent in type_info.get_parents() {
 						let parent = parent?;
 
-						let parent_name = parent.get_name();
+						let parent_name = parent.name();
 
 						if have_parents {
 							print!(", {}({}Vtbl)", parent_name, parent_name);
@@ -134,7 +136,7 @@ quick_main!(|| -> ::error::Result<()> {
 
 						assert_ne!(function_desc.funckind, ::winapi::um::oaidl::FUNC_STATIC);
 
-						let function_name = function.get_name();
+						let function_name = function.name();
 
 						match function_desc.invkind {
 							::winapi::um::oaidl::INVOKE_FUNC => {
@@ -143,7 +145,7 @@ quick_main!(|| -> ::error::Result<()> {
 								for param in function.params() {
 									let param_desc = param.desc();
 									println!("        {}: {},",
-										sanitize_reserved(param.get_name()),
+										sanitize_reserved(param.name()),
 										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 								}
 
@@ -158,7 +160,7 @@ quick_main!(|| -> ::error::Result<()> {
 								for param in function.params() {
 									let param_desc = param.desc();
 									println!("        {}: {},",
-										sanitize_reserved(param.get_name()),
+										sanitize_reserved(param.name()),
 										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 
 									if ((param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == ::winapi::um::oaidl::PARAMFLAG_FRETVAL
@@ -191,7 +193,7 @@ quick_main!(|| -> ::error::Result<()> {
 								for param in function.params() {
 									let param_desc = param.desc();
 									println!("        {}: {},",
-										sanitize_reserved(param.get_name()),
+										sanitize_reserved(param.name()),
 										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 								}
 
@@ -207,7 +209,7 @@ quick_main!(|| -> ::error::Result<()> {
 
 						// Synthesize get_() and put_() functions for each property.
 
-						let property_name = sanitize_reserved(property.get_name());
+						let property_name = sanitize_reserved(property.name());
 
 						println!("    fn get_{}(", property_name);
 						println!("        value: *mut {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
@@ -254,7 +256,7 @@ quick_main!(|| -> ::error::Result<()> {
 					for field in type_info.get_fields() {
 						let field = field?;
 
-						let field_name = sanitize_reserved(field.get_name());
+						let field_name = sanitize_reserved(field.name());
 						println!("    {} {}_mut: {},", field_name, field_name, type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 					}
 
@@ -265,14 +267,20 @@ quick_main!(|| -> ::error::Result<()> {
 				_ => unreachable!(),
 			}
 		}
-
-		::winapi::um::combaseapi::CoUninitialize();
-
-		Ok(())
 	}
+
+	Ok(())
 });
 
-fn sanitize_reserved(s: String) -> String {
+pub fn os_str_to_wstring(s: &::std::ffi::OsStr) -> Vec<u16> {
+	let result = ::std::os::windows::ffi::OsStrExt::encode_wide(s);
+	let mut result: Vec<_> = result.collect();
+	result.push(0);
+	result
+}
+
+fn sanitize_reserved(s: &rc::BString) -> String {
+	let s = s.to_string();
 	match s.as_ref() {
 		"impl" => "impl_".to_string(),
 		"type" => "type_".to_string(),
@@ -300,7 +308,7 @@ unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32
 		},
 
 		::winapi::shared::wtypes::VT_USERDEFINED =>
-			match type_info.get_ref_type_info(*type_.hreftype()).map(|ref_type_info| ref_type_info.get_name()) {
+			match type_info.get_ref_type_info(*type_.hreftype()).map(|ref_type_info| ref_type_info.name().to_string()) {
 				Ok(ref_type_name) => Ok(ref_type_name),
 				Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
 					writeln!(&mut ::std::io::stderr(), "Could not find referenced type. Replacing with `__missing_type__`").unwrap();
@@ -343,20 +351,4 @@ fn well_known_type_to_string(vt: ::winapi::shared::wtypes::VARTYPE) -> &'static 
 		::winapi::shared::wtypes::VT_LPWSTR => "LPCWSTR",
 		_ => unreachable!(),
 	}
-}
-
-fn guid_to_uuid_attribute(guid: &::winapi::shared::guiddef::GUID) -> String {
-	format!("0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}",
-		guid.Data1,
-		guid.Data2,
-		guid.Data3,
-		guid.Data4[0],
-		guid.Data4[1],
-		guid.Data4[2],
-		guid.Data4[3],
-		guid.Data4[4],
-		guid.Data4[5],
-		guid.Data4[6],
-		guid.Data4[7],
-	)
 }
