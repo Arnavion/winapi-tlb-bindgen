@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Arnavion <arnavion@gmail.com>"]
 
 [dependencies]
-clap = "2.21.x"
+clap = "2.22.x"
 derive-error-chain = "0.10.x"
 error-chain = "0.10.x"
 winapi = { git = "https://github.com/retep998/winapi-rs/", rev = "027a4b5d5d427d08f861394b92841cfa7cd9aad3", features = ["objbase", "oleauto", "winerror"] }
