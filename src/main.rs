@@ -247,6 +247,7 @@ quick_main!(|| -> ::error::Result<()> {
 
 				::winapi::um::oaidl::TKIND_DISPATCH => {
 					// TODO
+					writeln!(&mut ::std::io::stderr(), "Skipping dispinterface {}...", type_info.name()).unwrap();
 				},
 
 				::winapi::um::oaidl::TKIND_COCLASS => {
