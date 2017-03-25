@@ -250,7 +250,23 @@ quick_main!(|| -> ::error::Result<()> {
 				},
 
 				::winapi::um::oaidl::TKIND_COCLASS => {
-					// TODO
+					println!("#[repr(C)]");
+					println!("pub struct {};", type_name);
+					println!();
+					println!("impl {} {{", type_name);
+					println!("    #[inline]");
+					println!("    fn uuidof() -> ::shared::guiddef::GUID {{");
+					println!("        ::shared::guiddef::GUID {{");
+					println!("            Data1: 0x{:08x},", attributes.guid.Data1);
+					println!("            Data2: 0x{:04x},", attributes.guid.Data2);
+					println!("            Data3: 0x{:04x},", attributes.guid.Data3);
+					println!("            Data4: [0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}],",
+						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
+						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7]);
+					println!("        }}");
+					println!("    }}");
+					println!("}}");
+					println!();
 				},
 
 				::winapi::um::oaidl::TKIND_ALIAS => {
