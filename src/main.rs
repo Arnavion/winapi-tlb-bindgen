@@ -93,7 +93,29 @@ quick_main!(|| -> ::error::Result<()> {
 				},
 
 				::winapi::um::oaidl::TKIND_MODULE => {
-					// TODO
+					for function in type_info.get_functions() {
+						let function = function?;
+
+						let function_desc = function.desc();
+
+						assert_eq!(function_desc.funckind, ::winapi::um::oaidl::FUNC_STATIC);
+
+						let function_name = function.name();
+
+						println!(r#"extern "system" pub fn {}("#, function_name);
+
+						for param in function.params() {
+							let param_desc = param.desc();
+							println!("    {}: {},",
+								sanitize_reserved(param.name()),
+								type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+						}
+
+						println!(") -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+						println!();
+					}
+
+					println!();
 				},
 
 				::winapi::um::oaidl::TKIND_INTERFACE => {
