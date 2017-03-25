@@ -289,7 +289,7 @@ quick_main!(|| -> ::error::Result<()> {
 						_ => format!("[{}; {}]", alignment, num_aligned_elements),
 					};
 
-					println!("UNION2! {{ union {} {{", type_name);
+					println!("UNION2!{{union {} {{", type_name);
 					println!("    {},", wrapped_type);
 
 					for field in type_info.get_fields() {
