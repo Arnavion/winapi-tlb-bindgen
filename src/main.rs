@@ -205,13 +205,13 @@ quick_main!(|| -> ::error::Result<()> {
 
 							::winapi::um::oaidl::INVOKE_PROPERTYPUT |
 							::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => {
-								print!("    fn ");
-								match function_desc.invkind {
-									::winapi::um::oaidl::INVOKE_PROPERTYPUT => print!("put_"),
-									::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => print!("putref_"),
-									_ => unreachable!(),
-								}
-								println!("{}(", function_name);
+								println!("    fn {}{}(",
+									match function_desc.invkind {
+										::winapi::um::oaidl::INVOKE_PROPERTYPUT => "put_",
+										::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "putref_",
+										_ => unreachable!(),
+									},
+									function_name);
 
 								for param in function.params() {
 									let param_desc = param.desc();
