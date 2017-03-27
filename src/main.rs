@@ -253,7 +253,7 @@ quick_main!(|| -> ::error::Result<()> {
 
 				::winapi::um::oaidl::TKIND_COCLASS => {
 					println!("#[repr(C)]");
-					println!("pub struct {};", type_name);
+					println!("pub struct {} {{}}", type_name);
 					println!();
 					println!("impl {} {{", type_name);
 					println!("    #[inline]");
