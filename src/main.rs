@@ -157,6 +157,7 @@ quick_main!(|| -> ::error::Result<()> {
 						}
 
 						assert_ne!(function_desc.funckind, ::winapi::um::oaidl::FUNC_STATIC);
+						assert_ne!(function_desc.funckind, ::winapi::um::oaidl::FUNC_DISPATCH);
 
 						let function_name = function.name();
 
