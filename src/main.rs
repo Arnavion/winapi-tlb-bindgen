@@ -42,11 +42,15 @@ quick_main!(|| -> ::error::Result<()> {
 			};
 
 			let type_info = if type_info.attributes().typekind == ::winapi::um::oaidl::TKIND_DISPATCH {
+				// Get dispinterface half of this interface if it's a dual interface
+				// TODO: Also emit codegen for dispinterface side?
 				match type_info.get_interface_of_dispinterface() {
-					Ok(type_info) => type_info,
+					Ok(disp_type_info) => {
+						writeln!(&mut ::std::io::stderr(), "Skipping disinterface half of dual interface {}...", type_info.name()).unwrap();
+						disp_type_info
+					},
 
-					// TODO: Eg msxml::XMLDOMDocumentEvents. Why? Because it's a pure dispinterface?
-					Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_ELEMENTNOTFOUND), _)) => type_info,
+					Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_ELEMENTNOTFOUND), _)) => type_info, // Not a dual interface
 
 					err => err?,
 				}
