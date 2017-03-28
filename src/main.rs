@@ -10,8 +10,6 @@ mod error;
 mod rc;
 mod types;
 
-use ::std::io::Write;
-
 quick_main!(|| -> ::error::Result<()> {
 	let app = clap_app! {
 		@app (app_from_crate!())
@@ -351,6 +349,7 @@ unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32
 			match type_info.get_ref_type_info(*type_.hreftype()).map(|ref_type_info| ref_type_info.name().to_string()) {
 				Ok(ref_type_name) => Ok(ref_type_name),
 				Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
+					use ::std::io::Write;
 					writeln!(&mut ::std::io::stderr(), "Could not find referenced type. Replacing with `__missing_type__`").unwrap();
 					Ok("__missing_type__".to_string())
 				},
