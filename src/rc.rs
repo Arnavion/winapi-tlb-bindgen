@@ -110,8 +110,7 @@ type_info_associated_rc!(VarDescRc, ::winapi::um::oaidl::VARDESC, ReleaseVarDesc
 type_info_associated_rc!(FuncDescRc, ::winapi::um::oaidl::FUNCDESC, ReleaseFuncDesc);
 
 unsafe fn to_os_string(bstr: ::winapi::shared::wtypes::BSTR) -> ::std::ffi::OsString {
-	let len_ptr = ((bstr as usize) - ::std::mem::size_of::<u32>()) as *const u32;
-	let len = (*len_ptr as usize) / ::std::mem::size_of::<::winapi::shared::wtypesbase::OLECHAR>();
+	let len = ::winapi::um::oleauto::SysStringLen(bstr) as usize;
 	let slice = ::std::slice::from_raw_parts(bstr, len);
 	::std::os::windows::ffi::OsStringExt::from_wide(slice)
 }
