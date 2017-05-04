@@ -238,6 +238,10 @@ impl Field {
 		&self.name
 	}
 
+	pub unsafe fn member_id(&self) -> ::winapi::um::oaidl::MEMBERID {
+		self.desc.memid
+	}
+
 	pub unsafe fn type_(&self) -> &::winapi::um::oaidl::TYPEDESC {
 		&self.desc.elemdescVar.tdesc
 	}
