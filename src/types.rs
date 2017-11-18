@@ -176,7 +176,7 @@ impl Var {
 	}
 
 	pub unsafe fn value(&self) -> &::winapi::um::oaidl::VARIANT {
-		&*self.desc.lpvarValue
+		&**self.desc.u.lpvarValue()
 	}
 }
 

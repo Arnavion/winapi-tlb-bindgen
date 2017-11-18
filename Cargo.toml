@@ -7,7 +7,7 @@ authors = ["Arnavion <arnavion@gmail.com>"]
 clap = "2.23.x"
 derive-error-chain = "0.10.x"
 error-chain = "0.10.x"
-winapi = { git = "https://github.com/retep998/winapi-rs/", rev = "e651f98e21f2c6e20c20fd713c1ebc909012874e", features = ["objbase", "oleauto", "winerror"] }
+winapi = { git = "https://github.com/retep998/winapi-rs/", rev = "7338a5216a6a7abeefcc6bb1bc34381c81d3e247", features = ["objbase", "oleauto", "winerror"] }
 
 [profile.dev]
 panic = "abort"

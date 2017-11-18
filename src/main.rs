@@ -71,8 +71,8 @@ quick_main!(|| -> ::error::Result<()> {
 
 						print!("    {} = ", sanitize_reserved(member.name()));
 						let value = member.value();
-						match *value.vt() as ::winapi::shared::wtypes::VARENUM {
-							::winapi::shared::wtypes::VT_I4 => println!("{},", value.lVal()),
+						match value.n1.n2().vt as ::winapi::shared::wtypes::VARENUM {
+							::winapi::shared::wtypes::VT_I4 => println!("{},", value.n1.n2().n3.lVal()),
 							_ => unreachable!(),
 						}
 					}
@@ -110,7 +110,7 @@ quick_main!(|| -> ::error::Result<()> {
 							let param_desc = param.desc();
 							println!("    {}: {},",
 								sanitize_reserved(param.name()),
-								type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+								type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 						}
 
 						println!(") -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
@@ -171,7 +171,7 @@ quick_main!(|| -> ::error::Result<()> {
 									let param_desc = param.desc();
 									println!("        {}: {},",
 										sanitize_reserved(param.name()),
-										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 								}
 
 								println!("    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
@@ -186,9 +186,9 @@ quick_main!(|| -> ::error::Result<()> {
 									let param_desc = param.desc();
 									println!("        {}: {},",
 										sanitize_reserved(param.name()),
-										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 
-									if ((param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == ::winapi::um::oaidl::PARAMFLAG_FRETVAL
+									if ((param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == ::winapi::um::oaidl::PARAMFLAG_FRETVAL
 									{
 										assert_eq!(function_desc.elemdescFunc.tdesc.vt, ::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE);
 										explicit_ret_val = true;
@@ -219,7 +219,7 @@ quick_main!(|| -> ::error::Result<()> {
 									let param_desc = param.desc();
 									println!("        {}: {},",
 										sanitize_reserved(param.name()),
-										type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 								}
 
 								println!("    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
@@ -290,7 +290,7 @@ quick_main!(|| -> ::error::Result<()> {
 						let function_name = function.name();
 						let params: Vec<_> =
 							function.params().into_iter()
-							.filter(|param| ((param.desc().paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == 0)
+							.filter(|param| ((param.desc().u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == 0)
 							.collect();
 
 						println!("    pub unsafe fn {}{}(",
@@ -309,7 +309,7 @@ quick_main!(|| -> ::error::Result<()> {
 							let param_desc = param.desc();
 							println!("        {}: {},",
 								sanitize_reserved(param.name()),
-								type_to_string(&param_desc.tdesc, param_desc.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+								type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
 						}
 
 						println!("    ) -> (HRESULT, VARIANT, EXCEPINFO, UINT) {{");
@@ -319,7 +319,7 @@ quick_main!(|| -> ::error::Result<()> {
 
 							for param in params.into_iter().rev() {
 								let param_desc = param.desc();
-								if ((param.desc().paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == 0 {
+								if ((param.desc().u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == 0 {
 									let (vt, mutator) = vartype_mutator(&param_desc.tdesc, &sanitize_reserved(param.name()), &type_info);
 									println!("            {{ let mut v: VARIANT = ::core::mem::uninitialized(); VariantInit(&mut v); *v.vt_mut() = {}; *v{}; v }},", vt, mutator);
 								}
@@ -475,7 +475,7 @@ quick_main!(|| -> ::error::Result<()> {
 					println!();
 					println!("impl {} {{", type_name);
 					println!("    #[inline]");
-					println!("    fn uuidof() -> ::shared::guiddef::GUID {{");
+					println!("    pub fn uuidof() -> ::shared::guiddef::GUID {{");
 					println!("        ::shared::guiddef::GUID {{");
 					println!("            Data1: 0x{:08x},", attributes.guid.Data1);
 					println!("            Data2: 0x{:04x},", attributes.guid.Data2);
@@ -490,7 +490,7 @@ quick_main!(|| -> ::error::Result<()> {
 				},
 
 				::winapi::um::oaidl::TKIND_ALIAS => {
-					println!("type {} = {};", type_name, type_to_string(&attributes.tdescAlias, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+					println!("pub type {} = {};", type_name, type_to_string(&attributes.tdescAlias, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
 					println!();
 				},
 
@@ -551,22 +551,22 @@ unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32
 		::winapi::shared::wtypes::VT_PTR =>
 			if (param_flags & ::winapi::um::oaidl::PARAMFLAG_FIN) == ::winapi::um::oaidl::PARAMFLAG_FIN && (param_flags & ::winapi::um::oaidl::PARAMFLAG_FOUT) == 0 {
 				// [in] => *const
-				type_to_string(&**type_.lptdesc(), param_flags, type_info).map(|type_name| format!("*const {}", type_name))
+				type_to_string(&**type_.u.lptdesc(), param_flags, type_info).map(|type_name| format!("*const {}", type_name))
 			}
 			else {
 				// [in, out] => *mut
 				// [] => *mut (Some functions like IXMLError::GetErrorInfo don't annotate [out] on their out parameter)
-				type_to_string(&**type_.lptdesc(), param_flags, type_info).map(|type_name| format!("*mut {}", type_name))
+				type_to_string(&**type_.u.lptdesc(), param_flags, type_info).map(|type_name| format!("*mut {}", type_name))
 			},
 
 		::winapi::shared::wtypes::VT_CARRAY => {
-			assert_eq!((**type_.lpadesc()).cDims, 1);
+			assert_eq!((**type_.u.lpadesc()).cDims, 1);
 
-			type_to_string(&(**type_.lpadesc()).tdescElem, param_flags, type_info).map(|type_name| format!("[{}; {}]", type_name, (**type_.lpadesc()).rgbounds[0].cElements))
+			type_to_string(&(**type_.u.lpadesc()).tdescElem, param_flags, type_info).map(|type_name| format!("[{}; {}]", type_name, (**type_.u.lpadesc()).rgbounds[0].cElements))
 		},
 
 		::winapi::shared::wtypes::VT_USERDEFINED =>
-			match type_info.get_ref_type_info(*type_.hreftype()).map(|ref_type_info| ref_type_info.name().to_string()) {
+			match type_info.get_ref_type_info(*type_.u.hreftype()).map(|ref_type_info| ref_type_info.name().to_string()) {
 				Ok(ref_type_name) => Ok(ref_type_name),
 				Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
 					use ::std::io::Write;
@@ -628,7 +628,7 @@ unsafe fn vartype_mutator(type_: &::winapi::um::oaidl::TYPEDESC, param_name: &st
 		vt @ ::winapi::shared::wtypes::VT_INT => (vt, format!(".intVal_mut() = {}", param_name)),
 		vt @ ::winapi::shared::wtypes::VT_UINT => (vt, format!(".uintVal_mut() = {}", param_name)),
 		::winapi::shared::wtypes::VT_PTR => {
-			let pointee_vt = (**type_.lptdesc()).vt as ::winapi::shared::wtypes::VARENUM;
+			let pointee_vt = (**type_.u.lptdesc()).vt as ::winapi::shared::wtypes::VARENUM;
 			match pointee_vt {
 				::winapi::shared::wtypes::VT_I4 => (pointee_vt | ::winapi::shared::wtypes::VT_BYREF, format!(".plVal_mut() = {}", param_name)),
 				::winapi::shared::wtypes::VT_BSTR => (pointee_vt | ::winapi::shared::wtypes::VT_BYREF, format!(".pbstrVal_mut() = {}", param_name)),
@@ -640,7 +640,7 @@ unsafe fn vartype_mutator(type_: &::winapi::um::oaidl::TYPEDESC, param_name: &st
 			}
 		},
 		::winapi::shared::wtypes::VT_USERDEFINED => {
-			let ref_type = type_info.get_ref_type_info(*type_.hreftype()).unwrap();
+			let ref_type = type_info.get_ref_type_info(*type_.u.hreftype()).unwrap();
 			let size = ref_type.attributes().cbSizeInstance;
 			match size {
 				4 => (::winapi::shared::wtypes::VT_I4, format!(".lVal_mut() = {}", param_name)), // enum
