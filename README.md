@@ -1,4 +1,4 @@
-Generates bindings to COM interfaces / enums in the style of [winapi-rs v0.3](https://github.com/retep998/winapi-rs/tree/dev)
+Generates bindings to COM interfaces / enums in the style of [winapi-rs v0.3](https://docs.rs/winapi/0.3.x/x86_64-pc-windows-msvc/winapi/)
 
 1. Run against a .tlb
 
@@ -12,7 +12,3 @@ Generates bindings to COM interfaces / enums in the style of [winapi-rs v0.3](ht
 1. ???
 
 1. Profit
-
----
-
-Since winapi-rs v0.3 is still in development, the output of this binary can only be guaranteed to work with the same commit as the one in Cargo.toml.
