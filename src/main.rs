@@ -74,7 +74,15 @@ quick_main!(|| -> ::error::Result<()> {
 						print!("    {} = ", sanitize_reserved(member.name()));
 						let value = member.value();
 						match value.n1.n2().vt as ::winapi::shared::wtypes::VARENUM {
-							::winapi::shared::wtypes::VT_I4 => println!("{},", value.n1.n2().n3.lVal()),
+							::winapi::shared::wtypes::VT_I4 => {
+								let value = *value.n1.n2().n3.lVal();
+								if value >= 0 {
+									println!("{},", value);
+								}
+								else {
+									println!("{:#08x},", value);
+								}
+							},
 							_ => unreachable!(),
 						}
 					}
