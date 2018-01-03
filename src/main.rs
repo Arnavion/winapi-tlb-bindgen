@@ -470,6 +470,12 @@ quick_main!(|| -> ::error::Result<()> {
 				},
 
 				::winapi::um::oaidl::TKIND_COCLASS => {
+					for parent in type_info.get_parents() {
+						let parent = parent?;
+						let parent_name = parent.name();
+						println!("// Implements {}", parent_name);
+					}
+
 					println!("pub struct {} {{", type_name);
 					println!("    _use_cocreateinstance_to_instantiate: (),");
 					println!("}}");
