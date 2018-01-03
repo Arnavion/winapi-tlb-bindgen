@@ -29,7 +29,7 @@ impl BString {
 impl ::std::fmt::Display for BString {
 	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
 		unsafe {
-			write!(f, "{}", to_os_string(self.0).into_string().map_err(|_| ::std::fmt::Error).unwrap())
+			write!(f, "{}", to_os_string(self.0).into_string().map_err(|_| ::std::fmt::Error)?)
 		}
 	}
 }
