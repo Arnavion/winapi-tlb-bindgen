@@ -14,11 +14,13 @@ quick_main!(|| -> ::error::Result<()> {
 	let app = clap_app! {
 		@app (app_from_crate!())
 		(@arg filename: +required index(1) "filename")
+		(@arg ("enable-dispinterfaces"): --("enable-dispinterfaces") "emit code for DISPINTERFACEs (experimental)")
 	};
 
 	let matches = app.get_matches();
 	let filename = matches.value_of_os("filename").unwrap();
 	let filename = os_str_to_wstring(filename);
+	let emit_dispinterfaces = matches.is_present("enable-dispinterfaces");
 
 	unsafe {
 		let _coinitializer = ::rc::CoInitializer::new();
@@ -249,6 +251,11 @@ quick_main!(|| -> ::error::Result<()> {
 				},
 
 				::winapi::um::oaidl::TKIND_DISPATCH => {
+					if !emit_dispinterfaces {
+						writeln!(&mut ::std::io::stderr(), "Skipping dispinterface {} because --emit-dispinterfaces was not specified...", type_info.name()).unwrap();
+						continue;
+					}
+
 					println!("RIDL!{{#[uuid(0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x})]",
 						attributes.guid.Data1, attributes.guid.Data2, attributes.guid.Data3,
 						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
