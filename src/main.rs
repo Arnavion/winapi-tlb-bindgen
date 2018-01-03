@@ -489,8 +489,8 @@ quick_main!(|| -> ::error::Result<()> {
 					println!();
 					println!("impl {} {{", type_name);
 					println!("    #[inline]");
-					println!("    pub fn uuidof() -> ::shared::guiddef::GUID {{");
-					println!("        ::shared::guiddef::GUID {{");
+					println!("    pub fn uuidof() -> GUID {{");
+					println!("        GUID {{");
 					println!("            Data1: 0x{:08x},", attributes.guid.Data1);
 					println!("            Data2: 0x{:04x},", attributes.guid.Data2);
 					println!("            Data3: 0x{:04x},", attributes.guid.Data3);
