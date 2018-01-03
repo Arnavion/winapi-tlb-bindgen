@@ -8,7 +8,7 @@ pub enum ErrorKind {
 fn hresult_to_string(f: &mut ::std::fmt::Formatter, hr: &::winapi::shared::winerror::HRESULT) -> ::std::fmt::Result {
 	match *hr {
 		::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY => write!(f, "TYPE_E_CANTLOADLIBRARY"),
-		hr => write!(f, "HRESULT 0x{:08x}", hr),
+		hr => write!(f, "HRESULT {:#08x}", hr),
 	}
 }
 

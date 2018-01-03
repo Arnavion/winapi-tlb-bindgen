@@ -131,7 +131,7 @@ quick_main!(|| -> ::error::Result<()> {
 				},
 
 				::winapi::um::oaidl::TKIND_INTERFACE => {
-					println!("RIDL!{{#[uuid(0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x})]",
+					println!("RIDL!{{#[uuid({:#08x}, {:#04x}, {:#04x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x})]",
 						attributes.guid.Data1, attributes.guid.Data2, attributes.guid.Data3,
 						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
 						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7]);
@@ -264,7 +264,7 @@ quick_main!(|| -> ::error::Result<()> {
 						continue;
 					}
 
-					println!("RIDL!{{#[uuid(0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x})]",
+					println!("RIDL!{{#[uuid({:#08x}, {:#04x}, {:#04x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x})]",
 						attributes.guid.Data1, attributes.guid.Data2, attributes.guid.Data3,
 						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
 						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7]);
@@ -499,10 +499,10 @@ quick_main!(|| -> ::error::Result<()> {
 					println!("    #[inline]");
 					println!("    pub fn uuidof() -> GUID {{");
 					println!("        GUID {{");
-					println!("            Data1: 0x{:08x},", attributes.guid.Data1);
-					println!("            Data2: 0x{:04x},", attributes.guid.Data2);
-					println!("            Data3: 0x{:04x},", attributes.guid.Data3);
-					println!("            Data4: [0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}],",
+					println!("            Data1: {:#08x},", attributes.guid.Data1);
+					println!("            Data2: {:#04x},", attributes.guid.Data2);
+					println!("            Data3: {:#04x},", attributes.guid.Data3);
+					println!("            Data4: [{:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}, {:#02x}],",
 						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
 						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7]);
 					println!("        }}");
