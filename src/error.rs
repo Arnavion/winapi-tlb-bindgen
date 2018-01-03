@@ -1,7 +1,5 @@
-#[derive(Debug, error_chain)]
+#[derive(Debug, ErrorChain)]
 pub enum ErrorKind {
-	Msg(String),
-
 	#[error_chain(custom)]
 	#[error_chain(display = "hresult_to_string")]
 	HResult(::winapi::shared::winerror::HRESULT),
