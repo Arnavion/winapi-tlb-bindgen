@@ -28,7 +28,7 @@ quick_main!(|| -> ::error::Result<()> {
 		let type_lib = {
 			let mut type_lib_ptr = ::std::ptr::null_mut();
 			::error::to_result(::winapi::um::oleauto::LoadTypeLibEx(filename.as_ptr(), ::winapi::um::oleauto::REGKIND_NONE, &mut type_lib_ptr))?;
-			let type_lib = types::TypeLib::new(type_lib_ptr);
+			let type_lib = types::TypeLib::new(::std::ptr::NonNull::new(type_lib_ptr).unwrap());
 			(*type_lib_ptr).Release();
 			type_lib
 		};

@@ -1,7 +1,7 @@
 pub struct TypeLib(::rc::ComRc<::winapi::um::oaidl::ITypeLib>);
 
 impl TypeLib {
-	pub unsafe fn new(ptr: *mut ::winapi::um::oaidl::ITypeLib) -> Self {
+	pub unsafe fn new(ptr: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeLib>) -> Self {
 		TypeLib(::rc::ComRc::new(ptr))
 	}
 
@@ -39,7 +39,7 @@ impl<'a> Iterator for TypeInfos<'a> {
 			let result = ::error::to_result(
 				self.type_lib.GetTypeInfo(self.index, &mut type_info))
 				.and_then(|_| {
-					let result = TypeInfo::new(type_info);
+					let result = TypeInfo::new(::std::ptr::NonNull::new(type_info).unwrap());
 					(*type_info).Release();
 					result
 				});
@@ -58,17 +58,17 @@ pub struct TypeInfo {
 }
 
 impl TypeInfo {
-	pub unsafe fn new(ptr: *mut ::winapi::um::oaidl::ITypeInfo) -> ::error::Result<Self> {
+	pub unsafe fn new(ptr: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>) -> ::error::Result<Self> {
 		let name = {
 			let mut name = ::std::ptr::null_mut();
-			::error::to_result((*ptr).GetDocumentation(::winapi::um::oleauto::MEMBERID_NIL, &mut name, ::std::ptr::null_mut(), ::std::ptr::null_mut(), ::std::ptr::null_mut()))?;
+			::error::to_result((*ptr.as_ptr()).GetDocumentation(::winapi::um::oleauto::MEMBERID_NIL, &mut name, ::std::ptr::null_mut(), ::std::ptr::null_mut(), ::std::ptr::null_mut()))?;
 			::rc::BString::attach(name)
 		};
 
 		let mut type_attr = ::std::ptr::null_mut();
-		::error::to_result((*ptr).GetTypeAttr(&mut type_attr))?;
+		::error::to_result((*ptr.as_ptr()).GetTypeAttr(&mut type_attr))?;
 
-		Ok(TypeInfo { ptr: ::rc::ComRc::new(ptr), name, type_attr: ::rc::TypeAttributesRc::new(ptr, type_attr) })
+		Ok(TypeInfo { ptr: ::rc::ComRc::new(ptr), name, type_attr: ::rc::TypeAttributesRc::new(ptr, ::std::ptr::NonNull::new(type_attr).unwrap()) })
 	}
 
 	pub unsafe fn name(&self) -> &::rc::BString {
@@ -99,7 +99,7 @@ impl TypeInfo {
 		let mut ref_type_info = ::std::ptr::null_mut();
 		::error::to_result(self.ptr.GetRefTypeInfo(ref_type, &mut ref_type_info))?;
 
-		let result = TypeInfo::new(ref_type_info);
+		let result = TypeInfo::new(::std::ptr::NonNull::new(ref_type_info).unwrap());
 		(*ref_type_info).Release();
 		result
 	}
@@ -111,7 +111,7 @@ impl TypeInfo {
 		let mut type_info = ::std::ptr::null_mut();
 		::error::to_result(self.ptr.GetRefTypeInfo(ref_type, &mut type_info))?;
 
-		let result = TypeInfo::new(type_info);
+		let result = TypeInfo::new(::std::ptr::NonNull::new(type_info).unwrap());
 		(*type_info).Release();
 		result
 	}
@@ -142,7 +142,7 @@ impl<'a> Iterator for Vars<'a> {
 		}
 
 		unsafe {
-			let result = Var::new(self.type_info as *const _ as _, self.index as ::winapi::shared::minwindef::UINT);
+			let result = Var::new(self.type_info.into(), self.index as ::winapi::shared::minwindef::UINT);
 			self.index += 1;
 			Some(result)
 		}
@@ -155,15 +155,15 @@ pub struct Var {
 }
 
 impl Var {
-	pub unsafe fn new(type_info: *mut ::winapi::um::oaidl::ITypeInfo, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Self> {
+	pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Self> {
 		let mut desc = ::std::ptr::null_mut();
-		::error::to_result((*type_info).GetVarDesc(index, &mut desc))?;
-		let desc = ::rc::VarDescRc::new(type_info, desc);
+		::error::to_result((*type_info.as_ptr()).GetVarDesc(index, &mut desc))?;
+		let desc = ::rc::VarDescRc::new(type_info, ::std::ptr::NonNull::new(desc).unwrap());
 
 		let name = {
 			let mut num_names_received = 0;
 			let mut name = ::std::ptr::null_mut();
-			::error::to_result((*type_info).GetNames(desc.memid, &mut name, 1, &mut num_names_received))?;
+			::error::to_result((*type_info.as_ptr()).GetNames(desc.memid, &mut name, 1, &mut num_names_received))?;
 			assert_eq!(num_names_received, 1);
 			::rc::BString::attach(name)
 		};
@@ -205,7 +205,7 @@ impl<'a> Iterator for Fields<'a> {
 		}
 
 		unsafe {
-			let result = Field::new(self.type_info as *const _ as _, self.index as ::winapi::shared::minwindef::UINT);
+			let result = Field::new(self.type_info.into(), self.index as ::winapi::shared::minwindef::UINT);
 			self.index += 1;
 			Some(result)
 		}
@@ -218,15 +218,15 @@ pub struct Field {
 }
 
 impl Field {
-	pub unsafe fn new(type_info: *mut ::winapi::um::oaidl::ITypeInfo, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Self> {
+	pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Self> {
 		let mut desc = ::std::ptr::null_mut();
-		::error::to_result((*type_info).GetVarDesc(index, &mut desc))?;
-		let desc = ::rc::VarDescRc::new(type_info, desc);
+		::error::to_result((*type_info.as_ptr()).GetVarDesc(index, &mut desc))?;
+		let desc = ::rc::VarDescRc::new(type_info, ::std::ptr::NonNull::new(desc).unwrap());
 
 		let name = {
 			let mut num_names_received = 0;
 			let mut name = ::std::ptr::null_mut();
-			::error::to_result((*type_info).GetNames(desc.memid, &mut name, 1, &mut num_names_received))?;
+			::error::to_result((*type_info.as_ptr()).GetNames(desc.memid, &mut name, 1, &mut num_names_received))?;
 			assert_eq!(num_names_received, 1);
 			::rc::BString::attach(name)
 		};
@@ -272,7 +272,7 @@ impl<'a> Iterator for Functions<'a> {
 		}
 
 		unsafe {
-			let result = Function::new(self.type_info as *const _ as _, self.index as ::winapi::shared::minwindef::UINT);
+			let result = Function::new(self.type_info.into(), self.index as ::winapi::shared::minwindef::UINT);
 			self.index += 1;
 			Some(result)
 		}
@@ -286,14 +286,14 @@ pub struct Function {
 }
 
 impl Function {
-	pub unsafe fn new(type_info: *mut ::winapi::um::oaidl::ITypeInfo, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Self> {
+	pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Self> {
 		let mut desc = ::std::ptr::null_mut();
-		::error::to_result((*type_info).GetFuncDesc(index, &mut desc))?;
-		let desc = ::rc::FuncDescRc::new(type_info, desc);
+		::error::to_result((*type_info.as_ptr()).GetFuncDesc(index, &mut desc))?;
+		let desc = ::rc::FuncDescRc::new(type_info, ::std::ptr::NonNull::new(desc).unwrap());
 
 		let mut num_names_received = 0;
 		let mut names = vec![::std::ptr::null_mut(); (1 + desc.cParams) as usize];
-		::error::to_result((*type_info).GetNames(desc.memid, names.as_mut_ptr(), names.len() as ::winapi::shared::minwindef::UINT, &mut num_names_received))?;
+		::error::to_result((*type_info.as_ptr()).GetNames(desc.memid, names.as_mut_ptr(), names.len() as ::winapi::shared::minwindef::UINT, &mut num_names_received))?;
 		assert!(num_names_received >= 1);
 
 		let name = ::rc::BString::attach(names.remove(0));
@@ -391,7 +391,7 @@ impl<'a> Iterator for Parents<'a> {
 				self.type_info.GetRefTypeOfImplType(self.index as ::winapi::shared::minwindef::UINT, &mut parent_ref_type))
 				.and_then(|_| ::error::to_result(self.type_info.GetRefTypeInfo(parent_ref_type, &mut parent_type_info)))
 				.and_then(|_| {
-					let result = TypeInfo::new(parent_type_info);
+					let result = TypeInfo::new(::std::ptr::NonNull::new(parent_type_info).unwrap());
 					(*parent_type_info).Release();
 					result
 				});

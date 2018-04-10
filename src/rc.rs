@@ -42,11 +42,11 @@ impl Drop for BString {
 	}
 }
 
-pub struct ComRc<T>(*mut T);
+pub struct ComRc<T>(::std::ptr::NonNull<T>);
 
 impl<T> ComRc<T> {
-	pub unsafe fn new(ptr: *mut T) -> Self {
-		(*(ptr as *mut ::winapi::um::unknwnbase::IUnknown)).AddRef();
+	pub unsafe fn new(ptr: ::std::ptr::NonNull<T>) -> Self {
+		(*(ptr.as_ptr() as *mut ::winapi::um::unknwnbase::IUnknown)).AddRef();
 
 		ComRc(ptr)
 	}
@@ -57,7 +57,7 @@ impl<T> ::std::ops::Deref for ComRc<T> {
 
 	fn deref(&self) -> &Self::Target {
 		unsafe {
-			&*self.0
+			self.0.as_ref()
 		}
 	}
 }
@@ -65,9 +65,7 @@ impl<T> ::std::ops::Deref for ComRc<T> {
 impl<T> Drop for ComRc<T> {
 	fn drop(&mut self) {
 		unsafe {
-			if !self.0.is_null() {
-				(*(self.0 as *mut ::winapi::um::unknwnbase::IUnknown)).Release();
-			}
+			(*(self.0.as_ptr() as *mut ::winapi::um::unknwnbase::IUnknown)).Release();
 		}
 	}
 }
@@ -76,11 +74,11 @@ macro_rules! type_info_associated_rc {
 	($name:ident, $type:ty, $release_func:ident) => {
 		pub struct $name {
 			type_info: ComRc<::winapi::um::oaidl::ITypeInfo>,
-			ptr: *mut $type,
+			ptr: ::std::ptr::NonNull<$type>,
 		}
 
 		impl $name {
-			pub unsafe fn new(type_info: *mut ::winapi::um::oaidl::ITypeInfo, ptr: *mut $type) -> Self {
+			pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, ptr: ::std::ptr::NonNull<$type>) -> Self {
 				$name { type_info: ComRc::new(type_info), ptr }
 			}
 		}
@@ -90,7 +88,7 @@ macro_rules! type_info_associated_rc {
 
 			fn deref(&self) -> &Self::Target {
 				unsafe {
-					&*self.ptr
+					&*self.ptr.as_ptr()
 				}
 			}
 		}
@@ -98,7 +96,7 @@ macro_rules! type_info_associated_rc {
 		impl Drop for $name {
 			fn drop(&mut self) {
 				unsafe {
-					self.type_info.$release_func(self.ptr);
+					self.type_info.$release_func(self.ptr.as_ptr());
 				}
 			}
 		}
