@@ -1,0 +1,8 @@
+[package]
+name = "test-msxml"
+version = "0.1.0"
+authors = ["Arnavion <arnavion@gmail.com>"]
+publish = false
+
+[dependencies]
+winapi = { version = "0.3.x", features = ["objbase", "oleauto", "winerror"] }
