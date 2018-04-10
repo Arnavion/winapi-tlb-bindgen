@@ -8,7 +8,7 @@ impl CoInitializer {
 	}
 }
 
-impl ::std::ops::Drop for CoInitializer {
+impl Drop for CoInitializer {
 	fn drop(&mut self) {
 		unsafe {
 			::winapi::um::combaseapi::CoUninitialize();
@@ -34,7 +34,7 @@ impl ::std::fmt::Display for BString {
 	}
 }
 
-impl ::std::ops::Drop for BString {
+impl Drop for BString {
 	fn drop(&mut self) {
 		unsafe {
 			::winapi::um::oleauto::SysFreeString(self.0);
@@ -62,7 +62,7 @@ impl<T> ::std::ops::Deref for ComRc<T> {
 	}
 }
 
-impl<T> ::std::ops::Drop for ComRc<T> {
+impl<T> Drop for ComRc<T> {
 	fn drop(&mut self) {
 		unsafe {
 			if !self.0.is_null() {
@@ -95,7 +95,7 @@ macro_rules! type_info_associated_rc {
 			}
 		}
 
-		impl ::std::ops::Drop for $name {
+		impl Drop for $name {
 			fn drop(&mut self) {
 				unsafe {
 					self.type_info.$release_func(self.ptr);
