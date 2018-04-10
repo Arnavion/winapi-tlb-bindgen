@@ -1,15 +1,30 @@
 Generates bindings to COM interfaces, enums and coclasses.
 
 
-
 # Usage
 
-1. Run against a `.tlb`, or `.dll` with an embedded `.tlb` resource and save the output to a file in your crate. If it can be [`#import`ed in MSVC](https://docs.microsoft.com/en-us/cpp/preprocessor/hash-import-directive-cpp) then it should work with `winapi-tlb-bindgen`
+See the `test-msxml` subdirectory for a full example of using this library to generate bindings for the MSXML library.
 
-	For example, this generates bindings for MSXML using its typelib in the Windows SDK:
+1. Find the `.tlb`, or `.dll` with an embedded `.tlb` resource, for the COM library that you want to generate the bindgen output for. If it can be [`#import`ed in MSVC](https://docs.microsoft.com/en-us/cpp/preprocessor/hash-import-directive-cpp) then it should work with `winapi-tlb-bindgen`
 
-	```powershell
-	cargo run -- 'C:\Program Files (x86)\Windows Kits\10\Lib\10.0.16299.0\um\x64\MsXml.Tlb' > my_crate_that_uses_msxml\src\msxml.rs
+1. Write a build script that uses this crate to generate the bindgen output for the COM library.
+
+	```rust
+	// build.rs
+
+	winapi_tlb_bindgen::build(
+		std::path::Path::new(r"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.16299.0\um\x64\MsXml.Tlb"),
+		false,
+		out_file, // $OUT_DIR/msxml.rs
+	).unwrap();
+	```
+
+1. Add an empty mod file that `include!`s the bindgen output.
+
+	```rust
+	// src/msxml.rs
+
+	include!(concat!(env!("OUT_DIR"), "/msxml.rs"));
 	```
 
 1. Add a dependency to your crate on [`winapi = { version = "0.3.x" }`](https://docs.rs/winapi/0.3.x/x86_64-pc-windows-msvc/winapi/) You will likely want to enable (atleast) the `objbase`, `oleauto`, and `winerror` features to get access to `HRESULT`, `IUnknown` and other COM types.
@@ -19,7 +34,7 @@ Generates bindings to COM interfaces, enums and coclasses.
 1. Silence warnings for identifier names and unused functions as necessary, and prepend imports from winapi for any types the compiler can't find.
 
 	```rust
-	// msxml.rs
+	// src/msxml.rs
 
 	#![allow(non_camel_case_types, non_snake_case, unused)]
 
@@ -30,7 +45,7 @@ Generates bindings to COM interfaces, enums and coclasses.
 	use winapi::um::oaidl::{IDispatch, IDispatchVtbl, LPDISPATCH, VARIANT};
 	use winapi::um::unknwnbase::{IUnknown, IUnknownVtbl, LPUNKNOWN};
 
-	// Original bindgen output below...
+	include!(concat!(env!("OUT_DIR"), "/msxml.rs"));
 	```
 
 	Repeat till there are no more missing imports and the crate compiles.
@@ -42,6 +57,8 @@ Generates bindings to COM interfaces, enums and coclasses.
 1. Enjoy your COM API bindings.
 
 	```rust
+	// src/main.rs
+
 	#[macro_use]
 	extern crate winapi;
 
@@ -70,3 +87,13 @@ Generates bindings to COM interfaces, enums and coclasses.
 		}
 	}
 	```
+
+
+# `wasm-tlb-bindgen-bin`
+
+The `wasm-tlb-bindgen-bin` crate is a binary that takes in the path of the typelib as a command-line parameter, and writes the bindgen output to stdout. This can be used to generate bindings manually for greater control, as opposed to using a build script to automatically generate the bindings on every build.
+
+```powershell
+cd wasm-tlb-bindgen-bin
+cargo run -- 'C:\Program Files (x86)\Windows Kits\10\Lib\10.0.16299.0\um\x64\MsXml.Tlb'
+```

@@ -2,7 +2,7 @@
 pub struct CoInitializer;
 
 impl CoInitializer {
-	pub unsafe fn new() -> ::error::Result<Self> {
+	pub unsafe fn new() -> ::Result<Self> {
 		::error::to_result(::winapi::um::objbase::CoInitialize(::std::ptr::null_mut()))?;
 		Ok(CoInitializer)
 	}

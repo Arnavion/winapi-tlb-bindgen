@@ -6,3 +6,6 @@ publish = false
 
 [dependencies]
 winapi = { version = "0.3.x", features = ["objbase", "oleauto", "winerror"] }
+
+[build-dependencies]
+winapi-tlb-bindgen = { path = "../" }

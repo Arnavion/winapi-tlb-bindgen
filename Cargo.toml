@@ -4,10 +4,6 @@ version = "0.1.0"
 authors = ["Arnavion <arnavion@gmail.com>"]
 
 [dependencies]
-clap = "2.31.x"
 derive-error-chain = "0.11.x"
 error-chain = "0.11.x"
 winapi = { version = "0.3.x", features = ["objbase", "oleauto", "winerror"] }
-
-[profile.dev]
-panic = "abort"

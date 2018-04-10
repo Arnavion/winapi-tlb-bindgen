@@ -27,7 +27,7 @@ impl<'a> TypeInfos<'a> {
 }
 
 impl<'a> Iterator for TypeInfos<'a> {
-	type Item = ::error::Result<TypeInfo>;
+	type Item = ::Result<TypeInfo>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.count {
@@ -58,7 +58,7 @@ pub struct TypeInfo {
 }
 
 impl TypeInfo {
-	pub unsafe fn new(ptr: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>) -> ::error::Result<Self> {
+	pub unsafe fn new(ptr: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>) -> ::Result<Self> {
 		let name = {
 			let mut name = ::std::ptr::null_mut();
 			::error::to_result((*ptr.as_ptr()).GetDocumentation(::winapi::um::oleauto::MEMBERID_NIL, &mut name, ::std::ptr::null_mut(), ::std::ptr::null_mut(), ::std::ptr::null_mut()))?;
@@ -95,7 +95,7 @@ impl TypeInfo {
 		Parents::new(&*self.ptr, &*self.type_attr)
 	}
 
-	pub unsafe fn get_ref_type_info(&self, ref_type: ::winapi::um::oaidl::HREFTYPE) -> ::error::Result<TypeInfo> {
+	pub unsafe fn get_ref_type_info(&self, ref_type: ::winapi::um::oaidl::HREFTYPE) -> ::Result<TypeInfo> {
 		let mut ref_type_info = ::std::ptr::null_mut();
 		::error::to_result(self.ptr.GetRefTypeInfo(ref_type, &mut ref_type_info))?;
 
@@ -104,7 +104,7 @@ impl TypeInfo {
 		result
 	}
 
-	pub unsafe fn get_interface_of_dispinterface(&self) -> ::error::Result<TypeInfo> {
+	pub unsafe fn get_interface_of_dispinterface(&self) -> ::Result<TypeInfo> {
 		let mut ref_type = 0;
 		::error::to_result(self.ptr.GetRefTypeOfImplType(-1i32 as ::winapi::shared::minwindef::UINT, &mut ref_type))?;
 
@@ -134,7 +134,7 @@ impl<'a> Vars<'a> {
 }
 
 impl<'a> Iterator for Vars<'a> {
-	type Item = ::error::Result<Var>;
+	type Item = ::Result<Var>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.count {
@@ -155,7 +155,7 @@ pub struct Var {
 }
 
 impl Var {
-	pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Self> {
+	pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, index: ::winapi::shared::minwindef::UINT) -> ::Result<Self> {
 		let mut desc = ::std::ptr::null_mut();
 		::error::to_result((*type_info.as_ptr()).GetVarDesc(index, &mut desc))?;
 		let desc = ::rc::VarDescRc::new(type_info, ::std::ptr::NonNull::new(desc).unwrap());
@@ -197,7 +197,7 @@ impl<'a> Fields<'a> {
 }
 
 impl<'a> Iterator for Fields<'a> {
-	type Item = ::error::Result<Field>;
+	type Item = ::Result<Field>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.count {
@@ -218,7 +218,7 @@ pub struct Field {
 }
 
 impl Field {
-	pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Self> {
+	pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, index: ::winapi::shared::minwindef::UINT) -> ::Result<Self> {
 		let mut desc = ::std::ptr::null_mut();
 		::error::to_result((*type_info.as_ptr()).GetVarDesc(index, &mut desc))?;
 		let desc = ::rc::VarDescRc::new(type_info, ::std::ptr::NonNull::new(desc).unwrap());
@@ -264,7 +264,7 @@ impl<'a> Functions<'a> {
 }
 
 impl<'a> Iterator for Functions<'a> {
-	type Item = ::error::Result<Function>;
+	type Item = ::Result<Function>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.count {
@@ -286,7 +286,7 @@ pub struct Function {
 }
 
 impl Function {
-	pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, index: ::winapi::shared::minwindef::UINT) -> ::error::Result<Self> {
+	pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, index: ::winapi::shared::minwindef::UINT) -> ::Result<Self> {
 		let mut desc = ::std::ptr::null_mut();
 		::error::to_result((*type_info.as_ptr()).GetFuncDesc(index, &mut desc))?;
 		let desc = ::rc::FuncDescRc::new(type_info, ::std::ptr::NonNull::new(desc).unwrap());
@@ -376,7 +376,7 @@ impl<'a> Parents<'a> {
 }
 
 impl<'a> Iterator for Parents<'a> {
-	type Item = ::error::Result<TypeInfo>;
+	type Item = ::Result<TypeInfo>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.index >= self.count {

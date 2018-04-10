@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate clap;
-#[macro_use]
 extern crate error_chain;
 #[macro_use]
 extern crate derive_error_chain;
@@ -10,17 +7,34 @@ mod error;
 mod rc;
 mod types;
 
-quick_main!(|| -> ::error::Result<()> {
-	let app = clap_app! {
-		@app (app_from_crate!())
-		(@arg filename: +required index(1) "filename")
-		(@arg ("enable-dispinterfaces"): --("enable-dispinterfaces") "emit code for DISPINTERFACEs (experimental)")
+pub use error::{Error, ErrorKind, Result};
+
+/// The result of running [`::build`]
+#[derive(Debug)]
+pub struct BuildResult {
+	/// The number of referenced types that could not be found and were replaced with `__missing_type__`
+	pub num_missing_types: usize,
+
+	/// The number of types that could not be found
+	pub num_types_not_found: usize,
+
+	/// The number of dispinterfaces that were skipped because the `emit_dispinterfaces` parameter of [`::build`] was false
+	pub skipped_dispinterfaces: Vec<String>,
+
+	/// The number of dual interfaces whose dispinterface half was skipped
+	pub skipped_dispinterface_of_dual_interfaces: Vec<String>,
+}
+
+/// Parses the typelib (or DLL with embedded typelib resource) at the given path and emits bindings to the given writer.
+pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: W) -> ::Result<BuildResult> where W: std::io::Write {
+	let mut build_result = BuildResult {
+		num_missing_types: 0,
+		num_types_not_found: 0,
+		skipped_dispinterfaces: vec![],
+		skipped_dispinterface_of_dual_interfaces: vec![],
 	};
 
-	let matches = app.get_matches();
-	let filename = matches.value_of_os("filename").unwrap();
-	let filename = os_str_to_wstring(filename);
-	let emit_dispinterfaces = matches.is_present("enable-dispinterfaces");
+	let filename = os_str_to_wstring(filename.as_os_str());
 
 	unsafe {
 		let _coinitializer = ::rc::CoInitializer::new();
@@ -36,8 +50,8 @@ quick_main!(|| -> ::error::Result<()> {
 		for type_info in type_lib.get_type_infos() {
 			let type_info = match type_info {
 				Ok(type_info) => type_info,
-				Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
-					writeln!(&mut ::std::io::stderr(), "Could not find type. Skipping...").unwrap();
+				Err(::Error(::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
+					build_result.num_types_not_found += 1;
 					continue;
 				},
 				err => err?,
@@ -48,11 +62,11 @@ quick_main!(|| -> ::error::Result<()> {
 				// TODO: Also emit codegen for dispinterface side?
 				match type_info.get_interface_of_dispinterface() {
 					Ok(disp_type_info) => {
-						writeln!(&mut ::std::io::stderr(), "Skipping disinterface half of dual interface {}...", type_info.name()).unwrap();
+						build_result.skipped_dispinterface_of_dual_interfaces.push(format!("{}", type_info.name()));
 						disp_type_info
 					},
 
-					Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_ELEMENTNOTFOUND), _)) => type_info, // Not a dual interface
+					Err(::Error(::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_ELEMENTNOTFOUND), _)) => type_info, // Not a dual interface
 
 					err => err?,
 				}
@@ -66,42 +80,42 @@ quick_main!(|| -> ::error::Result<()> {
 
 			match attributes.typekind {
 				::winapi::um::oaidl::TKIND_ENUM => {
-					println!("ENUM!{{enum {} {{", type_name);
+					writeln!(out, "ENUM!{{enum {} {{", type_name)?;
 
 					for member in type_info.get_vars() {
 						let member = member?;
 
-						print!("    {} = ", sanitize_reserved(member.name()));
+						write!(out, "    {} = ", sanitize_reserved(member.name()))?;
 						let value = member.value();
 						match value.n1.n2().vt as ::winapi::shared::wtypes::VARENUM {
 							::winapi::shared::wtypes::VT_I4 => {
 								let value = *value.n1.n2().n3.lVal();
 								if value >= 0 {
-									println!("{},", value);
+									writeln!(out, "{},", value)?;
 								}
 								else {
-									println!("0x{:08x},", value);
+									writeln!(out, "0x{:08x},", value)?;
 								}
 							},
 							_ => unreachable!(),
 						}
 					}
 
-					println!("}}}}");
-					println!();
+					writeln!(out, "}}}}")?;
+					writeln!(out)?;
 				},
 
 				::winapi::um::oaidl::TKIND_RECORD => {
-					println!("STRUCT!{{struct {} {{", type_name);
+					writeln!(out, "STRUCT!{{struct {} {{", type_name)?;
 
 					for field in type_info.get_fields() {
 						let field = field?;
 
-						println!("    {}: {},", sanitize_reserved(field.name()), type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+						writeln!(out, "    {}: {},", sanitize_reserved(field.name()), type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 					}
 
-					println!("}}}}");
-					println!();
+					writeln!(out, "}}}}")?;
+					writeln!(out)?;
 				},
 
 				::winapi::um::oaidl::TKIND_MODULE => {
@@ -114,28 +128,28 @@ quick_main!(|| -> ::error::Result<()> {
 
 						let function_name = function.name();
 
-						println!(r#"extern "system" pub fn {}("#, function_name);
+						writeln!(out, r#"extern "system" pub fn {}("#, function_name)?;
 
 						for param in function.params() {
 							let param_desc = param.desc();
-							println!("    {}: {},",
+							writeln!(out, "    {}: {},",
 								sanitize_reserved(param.name()),
-								type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+								type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info, &mut build_result)?)?;
 						}
 
-						println!(") -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
-						println!();
+						writeln!(out, ") -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+						writeln!(out)?;
 					}
 
-					println!();
+					writeln!(out)?;
 				},
 
 				::winapi::um::oaidl::TKIND_INTERFACE => {
-					println!("RIDL!{{#[uuid(0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x})]",
+					writeln!(out, "RIDL!{{#[uuid(0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x})]",
 						attributes.guid.Data1, attributes.guid.Data2, attributes.guid.Data3,
 						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
-						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7]);
-					print!("interface {}({}Vtbl)", type_name, type_name);
+						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7])?;
+					write!(out, "interface {}({}Vtbl)", type_name, type_name)?;
 
 					let mut have_parents = false;
 					let mut parents_vtbl_size = 0;
@@ -146,17 +160,17 @@ quick_main!(|| -> ::error::Result<()> {
 						let parent_name = parent.name();
 
 						if have_parents {
-							print!(", {}({}Vtbl)", parent_name, parent_name);
+							write!(out, ", {}({}Vtbl)", parent_name, parent_name)?;
 						}
 						else {
-							print!(": {}({}Vtbl)", parent_name, parent_name);
+							write!(out, ": {}({}Vtbl)", parent_name, parent_name)?;
 						}
 						have_parents = true;
 
 						parents_vtbl_size += parent.attributes().cbSizeVft;
 					}
 
-					println!(" {{");
+					writeln!(out, " {{")?;
 
 					for function in type_info.get_functions() {
 						let function = function?;
@@ -175,28 +189,28 @@ quick_main!(|| -> ::error::Result<()> {
 
 						match function_desc.invkind {
 							::winapi::um::oaidl::INVOKE_FUNC => {
-								println!("    fn {}(", function_name);
+								writeln!(out, "    fn {}(", function_name)?;
 
 								for param in function.params() {
 									let param_desc = param.desc();
-									println!("        {}: {},",
+									writeln!(out, "        {}: {},",
 										sanitize_reserved(param.name()),
-										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info, &mut build_result)?)?;
 								}
 
-								println!("    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+								writeln!(out, "    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 							},
 
 							::winapi::um::oaidl::INVOKE_PROPERTYGET => {
-								println!("    fn get_{}(", function_name);
+								writeln!(out, "    fn get_{}(", function_name)?;
 
 								let mut explicit_ret_val = false;
 
 								for param in function.params() {
 									let param_desc = param.desc();
-									println!("        {}: {},",
+									writeln!(out, "        {}: {},",
 										sanitize_reserved(param.name()),
-										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info, &mut build_result)?)?;
 
 									if ((param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == ::winapi::um::oaidl::PARAMFLAG_FRETVAL
 									{
@@ -207,32 +221,32 @@ quick_main!(|| -> ::error::Result<()> {
 
 								if explicit_ret_val {
 									assert_eq!(function_desc.elemdescFunc.tdesc.vt, ::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE);
-									println!("    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+									writeln!(out, "    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 								}
 								else {
-									println!("        value: *mut {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
-									println!("    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
+									writeln!(out, "        value: *mut {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+									writeln!(out, "    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE))?;
 								}
 							},
 
 							::winapi::um::oaidl::INVOKE_PROPERTYPUT |
 							::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => {
-								println!("    fn {}{}(",
+								writeln!(out, "    fn {}{}(",
 									match function_desc.invkind {
 										::winapi::um::oaidl::INVOKE_PROPERTYPUT => "put_",
 										::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "putref_",
 										_ => unreachable!(),
 									},
-									function_name);
+									function_name)?;
 
 								for param in function.params() {
 									let param_desc = param.desc();
-									println!("        {}: {},",
+									writeln!(out, "        {}: {},",
 										sanitize_reserved(param.name()),
-										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info, &mut build_result)?)?;
 								}
 
-								println!("    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+								writeln!(out, "    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 							},
 
 							_ => unreachable!(),
@@ -246,30 +260,30 @@ quick_main!(|| -> ::error::Result<()> {
 
 						let property_name = sanitize_reserved(property.name());
 
-						println!("    fn get_{}(", property_name);
-						println!("        value: *mut {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
-						println!("    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
-						println!("    fn put_{}(", property_name);
-						println!("        value: {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FIN, &type_info)?);
-						println!("    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE));
+						writeln!(out, "    fn get_{}(", property_name)?;
+						writeln!(out, "        value: *mut {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+						writeln!(out, "    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE))?;
+						writeln!(out, "    fn put_{}(", property_name)?;
+						writeln!(out, "        value: {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FIN, &type_info, &mut build_result)?)?;
+						writeln!(out, "    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE))?;
 					}
 
-					println!("}}}}");
-					println!();
+					writeln!(out, "}}}}")?;
+					writeln!(out)?;
 				},
 
 				::winapi::um::oaidl::TKIND_DISPATCH => {
 					if !emit_dispinterfaces {
-						writeln!(&mut ::std::io::stderr(), "Skipping dispinterface {} because --emit-dispinterfaces was not specified...", type_info.name()).unwrap();
+						build_result.skipped_dispinterfaces.push(format!("{}", type_info.name()));
 						continue;
 					}
 
-					println!("RIDL!{{#[uuid(0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x})]",
+					writeln!(out, "RIDL!{{#[uuid(0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x})]",
 						attributes.guid.Data1, attributes.guid.Data2, attributes.guid.Data3,
 						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
-						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7]);
-					println!("interface {}({}Vtbl): IDispatch(IDispatchVtbl) {{", type_name, type_name);
-					println!("}}}}");
+						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7])?;
+					writeln!(out, "interface {}({}Vtbl): IDispatch(IDispatchVtbl) {{", type_name, type_name)?;
+					writeln!(out, "}}}}")?;
 
 					{
 						let mut parents = type_info.get_parents();
@@ -285,8 +299,8 @@ quick_main!(|| -> ::error::Result<()> {
 						assert!(parents.next().is_none());
 					}
 
-					println!();
-					println!("impl {} {{", type_name);
+					writeln!(out)?;
+					writeln!(out, "impl {} {{", type_name)?;
 
 					// IFaxServerNotify2 lists QueryInterface, etc
 					let has_inherited_functions = type_info.get_functions().any(|function| function.unwrap().desc().oVft > 0);
@@ -308,7 +322,7 @@ quick_main!(|| -> ::error::Result<()> {
 							.filter(|param| ((param.desc().u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == 0)
 							.collect();
 
-						println!("    pub unsafe fn {}{}(",
+						writeln!(out, "    pub unsafe fn {}{}(",
 							match function_desc.invkind {
 								::winapi::um::oaidl::INVOKE_FUNC => "",
 								::winapi::um::oaidl::INVOKE_PROPERTYGET => "get_",
@@ -316,89 +330,89 @@ quick_main!(|| -> ::error::Result<()> {
 								::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "putref_",
 								_ => unreachable!(),
 							},
-							function_name);
+							function_name)?;
 
-						println!("        &self,");
+						writeln!(out, "        &self,")?;
 
 						for param in &params {
 							let param_desc = param.desc();
-							println!("        {}: {},",
+							writeln!(out, "        {}: {},",
 								sanitize_reserved(param.name()),
-								type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info)?);
+								type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info, &mut build_result)?)?;
 						}
 
-						println!("    ) -> (HRESULT, VARIANT, EXCEPINFO, UINT) {{");
+						writeln!(out, "    ) -> (HRESULT, VARIANT, EXCEPINFO, UINT) {{")?;
 
 						if !params.is_empty() {
-							println!("        let mut args: [VARIANT; {}] = [", params.len());
+							writeln!(out, "        let mut args: [VARIANT; {}] = [", params.len())?;
 
 							for param in params.into_iter().rev() {
 								let param_desc = param.desc();
 								if ((param.desc().u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == 0 {
 									let (vt, mutator) = vartype_mutator(&param_desc.tdesc, &sanitize_reserved(param.name()), &type_info);
-									println!("            {{ let mut v: VARIANT = ::core::mem::uninitialized(); VariantInit(&mut v); *v.vt_mut() = {}; *v{}; v }},", vt, mutator);
+									writeln!(out, "            {{ let mut v: VARIANT = ::core::mem::uninitialized(); VariantInit(&mut v); *v.vt_mut() = {}; *v{}; v }},", vt, mutator)?;
 								}
 							}
 
-							println!("        ];");
-							println!();
+							writeln!(out, "        ];")?;
+							writeln!(out)?;
 						}
 
 						if function_desc.invkind == ::winapi::um::oaidl::INVOKE_PROPERTYPUT || function_desc.invkind == ::winapi::um::oaidl::INVOKE_PROPERTYPUTREF {
-							println!("        let disp_id_put = DISPID_PROPERTYPUT;");
-							println!();
+							writeln!(out, "        let disp_id_put = DISPID_PROPERTYPUT;")?;
+							writeln!(out)?;
 						}
 
-						println!("        let mut result: VARIANT = ::core::mem::uninitialized();");
-						println!("        VariantInit(&mut result);");
-						println!();
-						println!("        let mut exception_info: EXCEPINFO = ::core::mem::zeroed();");
-						println!();
-						println!("        let mut error_arg: UINT = 0;");
-						println!();
-						println!("        let mut disp_params = DISPPARAMS {{");
-						println!("            rgvarg: {},", if function_desc.cParams > 0 { "args.as_mut_ptr()" } else { "::core::ptr::null_mut()" });
-						println!("            rgdispidNamedArgs: {},",
+						writeln!(out, "        let mut result: VARIANT = ::core::mem::uninitialized();")?;
+						writeln!(out, "        VariantInit(&mut result);")?;
+						writeln!(out)?;
+						writeln!(out, "        let mut exception_info: EXCEPINFO = ::core::mem::zeroed();")?;
+						writeln!(out)?;
+						writeln!(out, "        let mut error_arg: UINT = 0;")?;
+						writeln!(out)?;
+						writeln!(out, "        let mut disp_params = DISPPARAMS {{")?;
+						writeln!(out, "            rgvarg: {},", if function_desc.cParams > 0 { "args.as_mut_ptr()" } else { "::core::ptr::null_mut()" })?;
+						writeln!(out, "            rgdispidNamedArgs: {},",
 							match function_desc.invkind {
 								::winapi::um::oaidl::INVOKE_FUNC |
 								::winapi::um::oaidl::INVOKE_PROPERTYGET => "::core::ptr::null_mut()",
 								::winapi::um::oaidl::INVOKE_PROPERTYPUT |
 								::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "&disp_id_put",
 								_ => unreachable!(),
-							});
-						println!("            cArgs: {},", function_desc.cParams);
-						println!("            cNamedArgs: {},",
+							})?;
+						writeln!(out, "            cArgs: {},", function_desc.cParams)?;
+						writeln!(out, "            cNamedArgs: {},",
 							match function_desc.invkind {
 								::winapi::um::oaidl::INVOKE_FUNC |
 								::winapi::um::oaidl::INVOKE_PROPERTYGET => "0",
 								::winapi::um::oaidl::INVOKE_PROPERTYPUT |
 								::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "1",
 								_ => unreachable!(),
-							});
-						println!("        }};");
-						println!();
-						println!("        let hr = ((*self.lpVtbl).parent.Invoke)(");
-						println!("            self as *const _ as *mut _,");
-						println!("            /* dispIdMember */ {},", function_desc.memid);
-						println!("            /* riid */ &IID_NULL,");
-						println!("            /* lcid */ 0,");
-						println!("            /* wFlags */ {},",
+							})?;
+						writeln!(out, "        }};")?;
+						writeln!(out)?;
+						writeln!(out, "        let hr = ((*self.lpVtbl).parent.Invoke)(")?;
+						writeln!(out, "            self as *const _ as *mut _,")?;
+						writeln!(out, "            /* dispIdMember */ {},", function_desc.memid)?;
+						writeln!(out, "            /* riid */ &IID_NULL,")?;
+						writeln!(out, "            /* lcid */ 0,")?;
+						writeln!(out, "            /* wFlags */ {},",
 							match function_desc.invkind {
 								::winapi::um::oaidl::INVOKE_FUNC => "DISPATCH_METHOD",
 								::winapi::um::oaidl::INVOKE_PROPERTYGET => "DISPATCH_PROPERTYGET",
 								::winapi::um::oaidl::INVOKE_PROPERTYPUT => "DISPATCH_PROPERTYPUT",
 								::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "DISPATCH_PROPERTYPUTREF",
 								_ => unreachable!(),
-							});
-						println!("            /* pDispParams */ &mut disp_params,");
-						println!("            /* pVarResult */ &mut result,");
-						println!("            /* pExcepInfo */ &mut exception_info,");
-						println!("            /* puArgErr */ &mut error_arg,");
-						println!("        );");
-						println!();
-						println!("        (hr, result, exception_info, error_arg)");
-						println!("    }}");
-						println!();
+							})?;
+						writeln!(out, "            /* pDispParams */ &mut disp_params,")?;
+						writeln!(out, "            /* pVarResult */ &mut result,")?;
+						writeln!(out, "            /* pExcepInfo */ &mut exception_info,")?;
+						writeln!(out, "            /* puArgErr */ &mut error_arg,")?;
+						writeln!(out, "        );")?;
+						writeln!(out)?;
+						writeln!(out, "        (hr, result, exception_info, error_arg)")?;
+						writeln!(out, "    }}")?;
+						writeln!(out)?;
 					}
 
 					for property in type_info.get_fields() {
@@ -409,111 +423,111 @@ quick_main!(|| -> ::error::Result<()> {
 						let property_name = sanitize_reserved(property.name());
 						let type_ = property.type_();
 
-						println!("    pub unsafe fn get_{}(", property_name);
-						println!("    ) -> (HRESULT, VARIANT, EXCEPINFO, UINT) {{");
-						println!("        let mut result: VARIANT = ::core::mem::uninitialized();");
-						println!("        VariantInit(&mut result);");
-						println!();
-						println!("        let mut exception_info: EXCEPINFO = ::core::mem::zeroed();");
-						println!();
-						println!("        let mut error_arg: UINT = 0;");
-						println!();
-						println!("        let mut disp_params = DISPPARAMS {{");
-						println!("            rgvarg: ::core::ptr::null_mut(),");
-						println!("            rgdispidNamedArgs: ::core::ptr::null_mut(),");
-						println!("            cArgs: 0,");
-						println!("            cNamedArgs: 0,");
-						println!("        }};");
-						println!();
-						println!("        let hr = ((*self.lpVtbl).parent.Invoke)(");
-						println!("            self as *const _ as *mut _,");
-						println!("            /* dispIdMember */ {},", property.member_id());
-						println!("            /* riid */ &IID_NULL,");
-						println!("            /* lcid */ 0,");
-						println!("            /* wFlags */ DISPATCH_PROPERTYGET,");
-						println!("            /* pDispParams */ &mut disp_params,");
-						println!("            /* pVarResult */ &mut result,");
-						println!("            /* pExcepInfo */ &mut exception_info,");
-						println!("            /* puArgErr */ &mut error_arg,");
-						println!("        );");
-						println!();
-						println!("        (hr, result, exception_info, error_arg)");
-						println!("    }}");
-						println!();
-						println!("    pub unsafe fn put_{}(", property_name);
-						println!("        value: {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FIN, &type_info)?);
-						println!("    ) -> (HRESULT, VARIANT, EXCEPINFO, UINT) {{");
-						println!("        let mut args: [VARIANT; 1] = [");
+						writeln!(out, "    pub unsafe fn get_{}(", property_name)?;
+						writeln!(out, "    ) -> (HRESULT, VARIANT, EXCEPINFO, UINT) {{")?;
+						writeln!(out, "        let mut result: VARIANT = ::core::mem::uninitialized();")?;
+						writeln!(out, "        VariantInit(&mut result);")?;
+						writeln!(out)?;
+						writeln!(out, "        let mut exception_info: EXCEPINFO = ::core::mem::zeroed();")?;
+						writeln!(out)?;
+						writeln!(out, "        let mut error_arg: UINT = 0;")?;
+						writeln!(out)?;
+						writeln!(out, "        let mut disp_params = DISPPARAMS {{")?;
+						writeln!(out, "            rgvarg: ::core::ptr::null_mut(),")?;
+						writeln!(out, "            rgdispidNamedArgs: ::core::ptr::null_mut(),")?;
+						writeln!(out, "            cArgs: 0,")?;
+						writeln!(out, "            cNamedArgs: 0,")?;
+						writeln!(out, "        }};")?;
+						writeln!(out)?;
+						writeln!(out, "        let hr = ((*self.lpVtbl).parent.Invoke)(")?;
+						writeln!(out, "            self as *const _ as *mut _,")?;
+						writeln!(out, "            /* dispIdMember */ {},", property.member_id())?;
+						writeln!(out, "            /* riid */ &IID_NULL,")?;
+						writeln!(out, "            /* lcid */ 0,")?;
+						writeln!(out, "            /* wFlags */ DISPATCH_PROPERTYGET,")?;
+						writeln!(out, "            /* pDispParams */ &mut disp_params,")?;
+						writeln!(out, "            /* pVarResult */ &mut result,")?;
+						writeln!(out, "            /* pExcepInfo */ &mut exception_info,")?;
+						writeln!(out, "            /* puArgErr */ &mut error_arg,")?;
+						writeln!(out, "        );")?;
+						writeln!(out)?;
+						writeln!(out, "        (hr, result, exception_info, error_arg)")?;
+						writeln!(out, "    }}")?;
+						writeln!(out)?;
+						writeln!(out, "    pub unsafe fn put_{}(", property_name)?;
+						writeln!(out, "        value: {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FIN, &type_info, &mut build_result)?)?;
+						writeln!(out, "    ) -> (HRESULT, VARIANT, EXCEPINFO, UINT) {{")?;
+						writeln!(out, "        let mut args: [VARIANT; 1] = [")?;
 						let (vt, mutator) = vartype_mutator(type_, "value", &type_info);
-						println!("            {{ let mut v: VARIANT = ::core::mem::uninitialized(); VariantInit(&mut v); *v.vt_mut() = {}; *v{}; v }},", vt, mutator);
-						println!("        ];");
-						println!();
-						println!("        let mut result: VARIANT = ::core::mem::uninitialized();");
-						println!("        VariantInit(&mut result);");
-						println!();
-						println!("        let mut exception_info: EXCEPINFO = ::core::mem::zeroed();");
-						println!();
-						println!("        let mut error_arg: UINT = 0;");
-						println!();
-						println!("        let mut disp_params = DISPPARAMS {{");
-						println!("            rgvarg: args.as_mut_ptr(),");
-						println!("            rgdispidNamedArgs: ::core::ptr::null_mut(),"); // TODO: PROPERTYPUT needs named args?
-						println!("            cArgs: 1,");
-						println!("            cNamedArgs: 0,");
-						println!("        }};");
-						println!();
-						println!("        let hr = ((*self.lpVtbl).parent.Invoke)(");
-						println!("            self as *const _ as *mut _,");
-						println!("            /* dispIdMember */ {},", property.member_id());
-						println!("            /* riid */ &IID_NULL,");
-						println!("            /* lcid */ 0,");
-						println!("            /* wFlags */ DISPATCH_PROPERTYPUT,");
-						println!("            /* pDispParams */ &mut disp_params,");
-						println!("            /* pVarResult */ &mut result,");
-						println!("            /* pExcepInfo */ &mut exception_info,");
-						println!("            /* puArgErr */ &mut error_arg,");
-						println!("        );");
-						println!();
+						writeln!(out, "            {{ let mut v: VARIANT = ::core::mem::uninitialized(); VariantInit(&mut v); *v.vt_mut() = {}; *v{}; v }},", vt, mutator)?;
+						writeln!(out, "        ];")?;
+						writeln!(out)?;
+						writeln!(out, "        let mut result: VARIANT = ::core::mem::uninitialized();")?;
+						writeln!(out, "        VariantInit(&mut result);")?;
+						writeln!(out)?;
+						writeln!(out, "        let mut exception_info: EXCEPINFO = ::core::mem::zeroed();")?;
+						writeln!(out)?;
+						writeln!(out, "        let mut error_arg: UINT = 0;")?;
+						writeln!(out)?;
+						writeln!(out, "        let mut disp_params = DISPPARAMS {{")?;
+						writeln!(out, "            rgvarg: args.as_mut_ptr(),")?;
+						writeln!(out, "            rgdispidNamedArgs: ::core::ptr::null_mut(),")?; // TODO: PROPERTYPUT needs named args?
+						writeln!(out, "            cArgs: 1,")?;
+						writeln!(out, "            cNamedArgs: 0,")?;
+						writeln!(out, "        }};")?;
+						writeln!(out)?;
+						writeln!(out, "        let hr = ((*self.lpVtbl).parent.Invoke)(")?;
+						writeln!(out, "            self as *const _ as *mut _,")?;
+						writeln!(out, "            /* dispIdMember */ {},", property.member_id())?;
+						writeln!(out, "            /* riid */ &IID_NULL,")?;
+						writeln!(out, "            /* lcid */ 0,")?;
+						writeln!(out, "            /* wFlags */ DISPATCH_PROPERTYPUT,")?;
+						writeln!(out, "            /* pDispParams */ &mut disp_params,")?;
+						writeln!(out, "            /* pVarResult */ &mut result,")?;
+						writeln!(out, "            /* pExcepInfo */ &mut exception_info,")?;
+						writeln!(out, "            /* puArgErr */ &mut error_arg,")?;
+						writeln!(out, "        );")?;
+						writeln!(out)?;
 						// TODO: VariantClear() on args
-						println!("        (hr, result, exception_info, error_arg)");
-						println!("    }}");
-						println!();
+						writeln!(out, "        (hr, result, exception_info, error_arg)")?;
+						writeln!(out, "    }}")?;
+						writeln!(out)?;
 					}
 
-					println!("}}");
-					println!();
+					writeln!(out, "}}")?;
+					writeln!(out)?;
 				},
 
 				::winapi::um::oaidl::TKIND_COCLASS => {
 					for parent in type_info.get_parents() {
 						let parent = parent?;
 						let parent_name = parent.name();
-						println!("// Implements {}", parent_name);
+						writeln!(out, "// Implements {}", parent_name)?;
 					}
 
-					println!("pub struct {} {{", type_name);
-					println!("    _use_cocreateinstance_to_instantiate: (),");
-					println!("}}");
-					println!();
-					println!("impl {} {{", type_name);
-					println!("    #[inline]");
-					println!("    pub fn uuidof() -> GUID {{");
-					println!("        GUID {{");
-					println!("            Data1: 0x{:08x},", attributes.guid.Data1);
-					println!("            Data2: 0x{:04x},", attributes.guid.Data2);
-					println!("            Data3: 0x{:04x},", attributes.guid.Data3);
-					println!("            Data4: [0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}],",
+					writeln!(out, "pub struct {} {{", type_name)?;
+					writeln!(out, "    _use_cocreateinstance_to_instantiate: (),")?;
+					writeln!(out, "}}")?;
+					writeln!(out)?;
+					writeln!(out, "impl {} {{", type_name)?;
+					writeln!(out, "    #[inline]")?;
+					writeln!(out, "    pub fn uuidof() -> GUID {{")?;
+					writeln!(out, "        GUID {{")?;
+					writeln!(out, "            Data1: 0x{:08x},", attributes.guid.Data1)?;
+					writeln!(out, "            Data2: 0x{:04x},", attributes.guid.Data2)?;
+					writeln!(out, "            Data3: 0x{:04x},", attributes.guid.Data3)?;
+					writeln!(out, "            Data4: [0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}],",
 						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
-						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7]);
-					println!("        }}");
-					println!("    }}");
-					println!("}}");
-					println!();
+						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7])?;
+					writeln!(out, "        }}")?;
+					writeln!(out, "    }}")?;
+					writeln!(out, "}}")?;
+					writeln!(out)?;
 				},
 
 				::winapi::um::oaidl::TKIND_ALIAS => {
-					println!("pub type {} = {};", type_name, type_to_string(&attributes.tdescAlias, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
-					println!();
+					writeln!(out, "pub type {} = {};", type_name, type_to_string(&attributes.tdescAlias, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+					writeln!(out)?;
 				},
 
 				::winapi::um::oaidl::TKIND_UNION => {
@@ -530,18 +544,18 @@ quick_main!(|| -> ::error::Result<()> {
 						_ => format!("[{}; {}]", alignment, num_aligned_elements),
 					};
 
-					println!("UNION2!{{union {} {{", type_name);
-					println!("    {},", wrapped_type);
+					writeln!(out, "UNION2!{{union {} {{", type_name)?;
+					writeln!(out, "    {},", wrapped_type)?;
 
 					for field in type_info.get_fields() {
 						let field = field?;
 
 						let field_name = sanitize_reserved(field.name());
-						println!("    {} {}_mut: {},", field_name, field_name, type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info)?);
+						writeln!(out, "    {} {}_mut: {},", field_name, field_name, type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 					}
 
-					println!("}}}}");
-					println!();
+					writeln!(out, "}}}}")?;
+					writeln!(out)?;
 				},
 
 				_ => unreachable!(),
@@ -549,10 +563,10 @@ quick_main!(|| -> ::error::Result<()> {
 		}
 	}
 
-	Ok(())
-});
+	Ok(build_result)
+}
 
-pub fn os_str_to_wstring(s: &::std::ffi::OsStr) -> Vec<u16> {
+pub(crate) fn os_str_to_wstring(s: &::std::ffi::OsStr) -> Vec<u16> {
 	let result = ::std::os::windows::ffi::OsStrExt::encode_wide(s);
 	let mut result: Vec<_> = result.collect();
 	result.push(0);
@@ -568,31 +582,30 @@ fn sanitize_reserved(s: &rc::BString) -> String {
 	}
 }
 
-unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32, type_info: &types::TypeInfo) -> ::error::Result<String> {
+unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32, type_info: &types::TypeInfo, build_result: &mut BuildResult) -> ::Result<String> {
 	match type_.vt as ::winapi::shared::wtypes::VARENUM {
 		::winapi::shared::wtypes::VT_PTR =>
 			if (param_flags & ::winapi::um::oaidl::PARAMFLAG_FIN) == ::winapi::um::oaidl::PARAMFLAG_FIN && (param_flags & ::winapi::um::oaidl::PARAMFLAG_FOUT) == 0 {
 				// [in] => *const
-				type_to_string(&**type_.u.lptdesc(), param_flags, type_info).map(|type_name| format!("*const {}", type_name))
+				type_to_string(&**type_.u.lptdesc(), param_flags, type_info, build_result).map(|type_name| format!("*const {}", type_name))
 			}
 			else {
 				// [in, out] => *mut
 				// [] => *mut (Some functions like IXMLError::GetErrorInfo don't annotate [out] on their out parameter)
-				type_to_string(&**type_.u.lptdesc(), param_flags, type_info).map(|type_name| format!("*mut {}", type_name))
+				type_to_string(&**type_.u.lptdesc(), param_flags, type_info, build_result).map(|type_name| format!("*mut {}", type_name))
 			},
 
 		::winapi::shared::wtypes::VT_CARRAY => {
 			assert_eq!((**type_.u.lpadesc()).cDims, 1);
 
-			type_to_string(&(**type_.u.lpadesc()).tdescElem, param_flags, type_info).map(|type_name| format!("[{}; {}]", type_name, (**type_.u.lpadesc()).rgbounds[0].cElements))
+			type_to_string(&(**type_.u.lpadesc()).tdescElem, param_flags, type_info, build_result).map(|type_name| format!("[{}; {}]", type_name, (**type_.u.lpadesc()).rgbounds[0].cElements))
 		},
 
 		::winapi::shared::wtypes::VT_USERDEFINED =>
 			match type_info.get_ref_type_info(*type_.u.hreftype()).map(|ref_type_info| ref_type_info.name().to_string()) {
 				Ok(ref_type_name) => Ok(ref_type_name),
-				Err(::error::Error(::error::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
-					use ::std::io::Write;
-					writeln!(&mut ::std::io::stderr(), "Could not find referenced type. Replacing with `__missing_type__`").unwrap();
+				Err(::Error(::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
+					build_result.num_missing_types += 1;
 					Ok("__missing_type__".to_string())
 				},
 				err => err,
