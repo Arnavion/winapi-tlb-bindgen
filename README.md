@@ -89,11 +89,11 @@ See the `test-msxml` subdirectory for a full example of using this library to ge
 	```
 
 
-# `wasm-tlb-bindgen-bin`
+# `winapi-tlb-bindgen-bin`
 
-The `wasm-tlb-bindgen-bin` crate is a binary that takes in the path of the typelib as a command-line parameter, and writes the bindgen output to stdout. This can be used to generate bindings manually for greater control, as opposed to using a build script to automatically generate the bindings on every build.
+The `winapi-tlb-bindgen-bin` crate is a binary that takes in the path of the typelib as a command-line parameter, and writes the bindgen output to stdout. This can be used to generate bindings manually for greater control, as opposed to using a build script to automatically generate the bindings on every build.
 
 ```powershell
-cd wasm-tlb-bindgen-bin
+cd winapi-tlb-bindgen-bin
 cargo run -- 'C:\Program Files (x86)\Windows Kits\10\Lib\10.0.16299.0\um\x64\MsXml.Tlb'
 ```
