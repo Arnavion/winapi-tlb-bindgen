@@ -11,7 +11,7 @@ fn main() {
 
 	let _ =
 		winapi_tlb_bindgen::build(
-			std::path::Path::new(r"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.16299.0\um\x64\MsXml.Tlb"),
+			std::path::Path::new(r"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.17134.0\um\x64\MsXml.Tlb"),
 			false,
 			msxml_rs,
 		).unwrap();
