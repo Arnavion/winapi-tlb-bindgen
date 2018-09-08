@@ -5,7 +5,13 @@ Generates bindings to COM interfaces, enums and coclasses.
 
 See the `test-msxml` subdirectory for a full example of using this library to generate bindings for the MSXML library.
 
-1. Find the `.tlb`, or `.dll` with an embedded `.tlb` resource, for the COM library that you want to generate the bindgen output for. If it can be [`#import`ed in MSVC](https://docs.microsoft.com/en-us/cpp/preprocessor/hash-import-directive-cpp) then it should work with `winapi-tlb-bindgen`
+1. Find the typelib for the COM library you want to generate bindings for:
+
+	- If you have a `.tlb` file, use that.
+	- If you have a `.dll` with an embedded `.tlb` resource, use that.
+	- If you have a `.idl`, generate a `.tlb` with `midl.exe` from the Windows SDK via `midl.exe .\foo.idl /tlb .\foo.tlb` and use that.
+
+	To be sure that a `.tlb` / `.dll` will work with `winapi-tlb-bindgen`, you can create a C++ project in MSVC and try to [`#import` the `.tlb` / `.dll`.](https://docs.microsoft.com/en-us/cpp/preprocessor/hash-import-directive-cpp) If that compiles, then it should work with `winapi-tlb-bindgen`
 
 1. Write a build script that uses this crate to generate the bindgen output for the COM library.
 
