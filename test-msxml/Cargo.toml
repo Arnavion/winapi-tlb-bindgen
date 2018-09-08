@@ -5,7 +5,7 @@ authors = ["Arnavion <arnavion@gmail.com>"]
 publish = false
 
 [dependencies]
-winapi = { version = "0.3.x", features = ["objbase", "oleauto", "winerror"] }
+winapi = { version = "0.3.x", features = ["combaseapi", "guiddef", "minwindef", "oaidl", "objbase", "oleauto", "unknwnbase", "winerror", "wtypes"] }
 
 [build-dependencies]
 winapi-tlb-bindgen = { path = "../" }
