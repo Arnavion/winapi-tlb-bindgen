@@ -1,0 +1,11 @@
+[package]
+name = "test-wmi"
+version = "0.1.0"
+authors = ["Arnavion <arnavion@gmail.com>"]
+publish = false
+
+[dependencies]
+winapi = { version = "0.3.x", features = ["combaseapi", "guiddef", "oaidl", "objbase", "objidl", "oleauto", "rpcdce", "unknwnbase", "winerror", "winnt", "wtypes"] }
+
+[build-dependencies]
+winapi-tlb-bindgen = { path = "../" }

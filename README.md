@@ -3,7 +3,7 @@ Generates bindings to COM interfaces, enums and coclasses.
 
 # Usage
 
-See the `test-msxml` subdirectory for a full example of using this library to generate bindings for the MSXML library.
+See the `test-msxml` and `test-wmi` subdirectories for full examples of using this library to generate bindings for the MSXML library and the WMI library respectively.
 
 1. Find the typelib for the COM library you want to generate bindings for:
 
