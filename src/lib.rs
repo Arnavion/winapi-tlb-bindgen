@@ -505,23 +505,11 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 						writeln!(out, "// Implements {}", parent_name)?;
 					}
 
-					writeln!(out, "pub struct {} {{", type_name)?;
-					writeln!(out, "    _use_cocreateinstance_to_instantiate: (),")?;
-					writeln!(out, "}}")?;
-					writeln!(out)?;
-					writeln!(out, "impl {} {{", type_name)?;
-					writeln!(out, "    #[inline]")?;
-					writeln!(out, "    pub fn uuidof() -> GUID {{")?;
-					writeln!(out, "        GUID {{")?;
-					writeln!(out, "            Data1: 0x{:08x},", attributes.guid.Data1)?;
-					writeln!(out, "            Data2: 0x{:04x},", attributes.guid.Data2)?;
-					writeln!(out, "            Data3: 0x{:04x},", attributes.guid.Data3)?;
-					writeln!(out, "            Data4: [0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}],",
+					writeln!(out, "RIDL!{{#[uuid(0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x})]",
+						attributes.guid.Data1, attributes.guid.Data2, attributes.guid.Data3,
 						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
 						attributes.guid.Data4[4], attributes.guid.Data4[5], attributes.guid.Data4[6], attributes.guid.Data4[7])?;
-					writeln!(out, "        }}")?;
-					writeln!(out, "    }}")?;
-					writeln!(out, "}}")?;
+					writeln!(out, "class {}; }}", type_name)?;
 					writeln!(out)?;
 				},
 

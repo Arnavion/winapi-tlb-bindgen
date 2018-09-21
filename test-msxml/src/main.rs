@@ -19,7 +19,7 @@ fn main() {
 		// Create DOMDocument
 		let mut document: *mut winapi::ctypes::c_void = std::ptr::null_mut();
 		assert_hr!(winapi::um::combaseapi::CoCreateInstance(
-			&msxml::DOMDocument::uuidof(),
+			&<msxml::DOMDocument as winapi::Class>::uuidof(),
 			std::ptr::null_mut(),
 			winapi::um::combaseapi::CLSCTX_ALL,
 			&<msxml::IXMLDOMDocument as winapi::Interface>::uuidof(),

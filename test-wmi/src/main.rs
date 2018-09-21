@@ -19,7 +19,7 @@ fn main() {
 		// Create WbemLocator
 		let mut locator: *mut winapi::ctypes::c_void = std::ptr::null_mut();
 		assert_hr!(winapi::um::combaseapi::CoCreateInstance(
-			&wbemcli::WbemLocator::uuidof(),
+			&<wbemcli::WbemLocator as winapi::Class>::uuidof(),
 			std::ptr::null_mut(),
 			winapi::um::combaseapi::CLSCTX_ALL,
 			&<wbemcli::IWbemLocator as winapi::Interface>::uuidof(),

@@ -33,7 +33,7 @@ See the `test-msxml` and `test-wmi` subdirectories for full examples of using th
 	include!(concat!(env!("OUT_DIR"), "/msxml.rs"));
 	```
 
-1. Add a dependency to your crate on [`winapi = { version = "0.3.x" }`](https://docs.rs/winapi/0.3.x/x86_64-pc-windows-msvc/winapi/) You will likely want to enable (atleast) the `objbase`, `oleauto`, and `winerror` features to get access to `HRESULT`, `IUnknown` and other COM types.
+1. Add a dependency to your crate on [`winapi = { version = "0.3.6" }`](https://docs.rs/winapi/0.3.x/x86_64-pc-windows-msvc/winapi/) You will likely want to enable (atleast) the `objbase`, `oleauto`, and `winerror` features to get access to `HRESULT`, `IUnknown` and other COM types.
 
 1. Build your crate.
 
