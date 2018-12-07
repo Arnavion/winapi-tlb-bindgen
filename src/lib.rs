@@ -584,9 +584,16 @@ unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32
 			},
 
 		::winapi::shared::wtypes::VT_CARRAY => {
-			assert_eq!((**type_.u.lpadesc()).cDims, 1);
+			let num_dimensions = (**type_.u.lpadesc()).cDims as usize;
+			let dimensions: &[winapi::um::oaidl::SAFEARRAYBOUND] = std::slice::from_raw_parts((**type_.u.lpadesc()).rgbounds.as_ptr(), num_dimensions);
 
-			type_to_string(&(**type_.u.lpadesc()).tdescElem, param_flags, type_info, build_result).map(|type_name| format!("[{}; {}]", type_name, (**type_.u.lpadesc()).rgbounds[0].cElements))
+			let mut type_name = type_to_string(&(**type_.u.lpadesc()).tdescElem, param_flags, type_info, build_result)?;
+
+			for dimension in dimensions {
+				type_name = format!("[{}; {}]", type_name, dimension.cElements);
+			}
+
+			Ok(type_name)
 		},
 
 		::winapi::shared::wtypes::VT_USERDEFINED =>
