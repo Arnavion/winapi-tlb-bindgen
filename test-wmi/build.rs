@@ -5,7 +5,7 @@ fn main() {
 
 	let midl_command_status =
 		std::process::Command::new("midl.exe") // Expected to be running in "x64 Native Tools Command Prompt"
-		.arg(r"C:\Program Files (x86)\Windows Kits\10\Include\10.0.17134.0\um\WbemCli.Idl")
+		.arg(r"C:\Program Files (x86)\Windows Kits\10\Include\10.0.17763.0\um\WbemCli.Idl")
 		.arg("/tlb")
 		.arg("WbemCli.tlb")
 		.current_dir(&out_dir)
