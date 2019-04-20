@@ -2,10 +2,8 @@
 name = "winapi-tlb-bindgen-bin"
 version = "0.1.0"
 authors = ["Arnavion <arnavion@gmail.com>"]
+edition = "2018"
 
 [dependencies]
-clap = "2.31.x"
+structopt = "0.2"
 winapi-tlb-bindgen = { version = "0.1.x", path = "../" }
-
-[profile.dev]
-panic = "abort"

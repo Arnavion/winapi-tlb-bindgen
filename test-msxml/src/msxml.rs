@@ -1,5 +1,6 @@
 #![allow(non_camel_case_types, non_snake_case, unused)]
 
+use winapi::{ENUM, RIDL, STRUCT};
 use winapi::shared::guiddef::GUID;
 use winapi::shared::minwindef::UINT;
 use winapi::shared::winerror::HRESULT;

@@ -19,7 +19,7 @@ See the `test-msxml` and `test-wmi` subdirectories for full examples of using th
 	// build.rs
 
 	winapi_tlb_bindgen::build(
-		std::path::Path::new(r"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.16299.0\um\x64\MsXml.Tlb"),
+		std::path::Path::new(r"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.18362.0\um\x64\MsXml.Tlb"),
 		false,
 		out_file, // $OUT_DIR/msxml.rs
 	).unwrap();
@@ -44,6 +44,7 @@ See the `test-msxml` and `test-wmi` subdirectories for full examples of using th
 
 	#![allow(non_camel_case_types, non_snake_case, unused)]
 
+	use winapi::{ENUM, RIDL, STRUCT};
 	use winapi::shared::guiddef::GUID;
 	use winapi::shared::minwindef::UINT;
 	use winapi::shared::winerror::HRESULT;
@@ -65,9 +66,6 @@ See the `test-msxml` and `test-wmi` subdirectories for full examples of using th
 	```rust
 	// src/main.rs
 
-	#[macro_use]
-	extern crate winapi;
-
 	mod msxml;
 
 	fn main() {
@@ -78,7 +76,7 @@ See the `test-msxml` and `test-wmi` subdirectories for full examples of using th
 			let mut document: *mut winapi::ctypes::c_void = std::ptr::null_mut();
 			let hr =
 				winapi::um::combaseapi::CoCreateInstance(
-					&msxml::DOMDocument::uuidof(),
+					&<msxml::DOMDocument as winapi::Class>::uuidof(),
 					std::ptr::null_mut(),
 					winapi::um::combaseapi::CLSCTX_ALL,
 					&<msxml::IXMLDOMDocument as winapi::Interface>::uuidof(),

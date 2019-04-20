@@ -1,9 +1,9 @@
 #[derive(Debug)]
-pub struct CoInitializer;
+pub(crate) struct CoInitializer;
 
 impl CoInitializer {
-	pub unsafe fn new() -> ::Result<Self> {
-		::error::to_result(::winapi::um::objbase::CoInitialize(::std::ptr::null_mut()))?;
+	pub(crate) unsafe fn new() -> Result<Self, crate::Error> {
+		crate::error::to_result(winapi::um::objbase::CoInitialize(std::ptr::null_mut()))?;
 		Ok(CoInitializer)
 	}
 }
@@ -11,25 +11,25 @@ impl CoInitializer {
 impl Drop for CoInitializer {
 	fn drop(&mut self) {
 		unsafe {
-			::winapi::um::combaseapi::CoUninitialize();
+			winapi::um::combaseapi::CoUninitialize();
 		}
 	}
 }
 
 #[derive(Debug)]
-pub struct BString(::winapi::shared::wtypes::BSTR);
+pub(crate) struct BString(winapi::shared::wtypes::BSTR);
 
 impl BString {
-	pub fn attach(s: ::winapi::shared::wtypes::BSTR) -> Self {
+	pub(crate) fn attach(s: winapi::shared::wtypes::BSTR) -> Self {
 		assert!(!s.is_null());
 		BString(s)
 	}
 }
 
-impl ::std::fmt::Display for BString {
-	fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl std::fmt::Display for BString {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		unsafe {
-			write!(f, "{}", to_os_string(self.0).into_string().map_err(|_| ::std::fmt::Error)?)
+			write!(f, "{}", to_os_string(self.0).into_string().map_err(|_| std::fmt::Error)?)
 		}
 	}
 }
@@ -37,22 +37,22 @@ impl ::std::fmt::Display for BString {
 impl Drop for BString {
 	fn drop(&mut self) {
 		unsafe {
-			::winapi::um::oleauto::SysFreeString(self.0);
+			winapi::um::oleauto::SysFreeString(self.0);
 		}
 	}
 }
 
-pub struct ComRc<T>(::std::ptr::NonNull<T>);
+pub(crate) struct ComRc<T>(std::ptr::NonNull<T>);
 
 impl<T> ComRc<T> {
-	pub unsafe fn new(ptr: ::std::ptr::NonNull<T>) -> Self {
-		(*(ptr.as_ptr() as *mut ::winapi::um::unknwnbase::IUnknown)).AddRef();
+	pub(crate) unsafe fn new(ptr: std::ptr::NonNull<T>) -> Self {
+		(*(ptr.as_ptr() as *mut winapi::um::unknwnbase::IUnknown)).AddRef();
 
 		ComRc(ptr)
 	}
 }
 
-impl<T> ::std::ops::Deref for ComRc<T> {
+impl<T> std::ops::Deref for ComRc<T> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -65,25 +65,25 @@ impl<T> ::std::ops::Deref for ComRc<T> {
 impl<T> Drop for ComRc<T> {
 	fn drop(&mut self) {
 		unsafe {
-			(*(self.0.as_ptr() as *mut ::winapi::um::unknwnbase::IUnknown)).Release();
+			(*(self.0.as_ptr() as *mut winapi::um::unknwnbase::IUnknown)).Release();
 		}
 	}
 }
 
 macro_rules! type_info_associated_rc {
 	($name:ident, $type:ty, $release_func:ident) => {
-		pub struct $name {
-			type_info: ComRc<::winapi::um::oaidl::ITypeInfo>,
-			ptr: ::std::ptr::NonNull<$type>,
+		pub(crate) struct $name {
+			type_info: ComRc<winapi::um::oaidl::ITypeInfo>,
+			ptr: std::ptr::NonNull<$type>,
 		}
 
 		impl $name {
-			pub unsafe fn new(type_info: ::std::ptr::NonNull<::winapi::um::oaidl::ITypeInfo>, ptr: ::std::ptr::NonNull<$type>) -> Self {
+			pub(crate) unsafe fn new(type_info: std::ptr::NonNull<winapi::um::oaidl::ITypeInfo>, ptr: std::ptr::NonNull<$type>) -> Self {
 				$name { type_info: ComRc::new(type_info), ptr }
 			}
 		}
 
-		impl ::std::ops::Deref for $name {
+		impl std::ops::Deref for $name {
 			type Target = $type;
 
 			fn deref(&self) -> &Self::Target {
@@ -103,12 +103,12 @@ macro_rules! type_info_associated_rc {
 	};
 }
 
-type_info_associated_rc!(TypeAttributesRc, ::winapi::um::oaidl::TYPEATTR, ReleaseTypeAttr);
-type_info_associated_rc!(VarDescRc, ::winapi::um::oaidl::VARDESC, ReleaseVarDesc);
-type_info_associated_rc!(FuncDescRc, ::winapi::um::oaidl::FUNCDESC, ReleaseFuncDesc);
+type_info_associated_rc!(TypeAttributesRc, winapi::um::oaidl::TYPEATTR, ReleaseTypeAttr);
+type_info_associated_rc!(VarDescRc, winapi::um::oaidl::VARDESC, ReleaseVarDesc);
+type_info_associated_rc!(FuncDescRc, winapi::um::oaidl::FUNCDESC, ReleaseFuncDesc);
 
-unsafe fn to_os_string(bstr: ::winapi::shared::wtypes::BSTR) -> ::std::ffi::OsString {
-	let len = ::winapi::um::oleauto::SysStringLen(bstr) as usize;
-	let slice = ::std::slice::from_raw_parts(bstr, len);
-	::std::os::windows::ffi::OsStringExt::from_wide(slice)
+unsafe fn to_os_string(bstr: winapi::shared::wtypes::BSTR) -> std::ffi::OsString {
+	let len = winapi::um::oleauto::SysStringLen(bstr) as usize;
+	let slice = std::slice::from_raw_parts(bstr, len);
+	std::os::windows::ffi::OsStringExt::from_wide(slice)
 }

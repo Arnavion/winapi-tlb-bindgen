@@ -1,15 +1,19 @@
-extern crate error_chain;
-#[macro_use]
-extern crate derive_error_chain;
-extern crate winapi;
+#![warn(rust_2018_idioms, warnings)]
+#![deny(clippy::all, clippy::pedantic)]
+#![allow(
+	clippy::cast_possible_truncation,
+	clippy::cast_sign_loss,
+	clippy::cognitive_complexity,
+	clippy::use_self,
+)]
 
 mod error;
 mod rc;
 mod types;
 
-pub use error::{Error, ErrorKind, Result};
+pub use error::Error;
 
-/// The result of running [`::build`]
+/// The result of running [`build`]
 #[derive(Debug)]
 pub struct BuildResult {
 	/// The number of referenced types that could not be found and were replaced with `__missing_type__`
@@ -18,7 +22,7 @@ pub struct BuildResult {
 	/// The number of types that could not be found
 	pub num_types_not_found: usize,
 
-	/// The number of dispinterfaces that were skipped because the `emit_dispinterfaces` parameter of [`::build`] was false
+	/// The number of dispinterfaces that were skipped because the `emit_dispinterfaces` parameter of [`build`] was false
 	pub skipped_dispinterfaces: Vec<String>,
 
 	/// The number of dual interfaces whose dispinterface half was skipped
@@ -26,7 +30,7 @@ pub struct BuildResult {
 }
 
 /// Parses the typelib (or DLL with embedded typelib resource) at the given path and emits bindings to the given writer.
-pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: W) -> ::Result<BuildResult> where W: std::io::Write {
+pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: W) -> Result<BuildResult, Error> where W: std::io::Write {
 	let mut build_result = BuildResult {
 		num_missing_types: 0,
 		num_types_not_found: 0,
@@ -37,12 +41,12 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 	let filename = os_str_to_wstring(filename.as_os_str());
 
 	unsafe {
-		let _coinitializer = ::rc::CoInitializer::new();
+		let _coinitializer = rc::CoInitializer::new();
 
 		let type_lib = {
-			let mut type_lib_ptr = ::std::ptr::null_mut();
-			::error::to_result(::winapi::um::oleauto::LoadTypeLibEx(filename.as_ptr(), ::winapi::um::oleauto::REGKIND_NONE, &mut type_lib_ptr))?;
-			let type_lib = types::TypeLib::new(::std::ptr::NonNull::new(type_lib_ptr).unwrap());
+			let mut type_lib_ptr = std::ptr::null_mut();
+			error::to_result(winapi::um::oleauto::LoadTypeLibEx(filename.as_ptr(), winapi::um::oleauto::REGKIND_NONE, &mut type_lib_ptr))?;
+			let type_lib = types::TypeLib::new(std::ptr::NonNull::new(type_lib_ptr).unwrap());
 			(*type_lib_ptr).Release();
 			type_lib
 		};
@@ -50,14 +54,14 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 		for type_info in type_lib.get_type_infos() {
 			let type_info = match type_info {
 				Ok(type_info) => type_info,
-				Err(::Error(::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
+				Err(Error::HResult(winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY)) => {
 					build_result.num_types_not_found += 1;
 					continue;
 				},
 				err => err?,
 			};
 
-			let type_info = if type_info.attributes().typekind == ::winapi::um::oaidl::TKIND_DISPATCH {
+			let type_info = if type_info.attributes().typekind == winapi::um::oaidl::TKIND_DISPATCH {
 				// Get dispinterface half of this interface if it's a dual interface
 				// TODO: Also emit codegen for dispinterface side?
 				match type_info.get_interface_of_dispinterface() {
@@ -66,7 +70,7 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 						disp_type_info
 					},
 
-					Err(::Error(::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_ELEMENTNOTFOUND), _)) => type_info, // Not a dual interface
+					Err(Error::HResult(winapi::shared::winerror::TYPE_E_ELEMENTNOTFOUND)) => type_info, // Not a dual interface
 
 					err => err?,
 				}
@@ -79,7 +83,7 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 			let type_name = type_info.name();
 
 			match attributes.typekind {
-				::winapi::um::oaidl::TKIND_ENUM => {
+				winapi::um::oaidl::TKIND_ENUM => {
 					writeln!(out, "ENUM!{{enum {} {{", type_name)?;
 
 					for member in type_info.get_vars() {
@@ -87,8 +91,8 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 
 						write!(out, "    {} = ", sanitize_reserved(member.name()))?;
 						let value = member.value();
-						match value.n1.n2().vt as ::winapi::shared::wtypes::VARENUM {
-							::winapi::shared::wtypes::VT_I4 => {
+						match winapi::shared::wtypes::VARENUM::from(value.n1.n2().vt) {
+							winapi::shared::wtypes::VT_I4 => {
 								let value = *value.n1.n2().n3.lVal();
 								if value >= 0 {
 									writeln!(out, "{},", value)?;
@@ -105,26 +109,26 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 					writeln!(out)?;
 				},
 
-				::winapi::um::oaidl::TKIND_RECORD => {
+				winapi::um::oaidl::TKIND_RECORD => {
 					writeln!(out, "STRUCT!{{struct {} {{", type_name)?;
 
 					for field in type_info.get_fields() {
 						let field = field?;
 
-						writeln!(out, "    {}: {},", sanitize_reserved(field.name()), type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+						writeln!(out, "    {}: {},", sanitize_reserved(field.name()), type_to_string(field.type_(), winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 					}
 
 					writeln!(out, "}}}}")?;
 					writeln!(out)?;
 				},
 
-				::winapi::um::oaidl::TKIND_MODULE => {
+				winapi::um::oaidl::TKIND_MODULE => {
 					for function in type_info.get_functions() {
 						let function = function?;
 
 						let function_desc = function.desc();
 
-						assert_eq!(function_desc.funckind, ::winapi::um::oaidl::FUNC_STATIC);
+						assert_eq!(function_desc.funckind, winapi::um::oaidl::FUNC_STATIC);
 
 						let function_name = function.name();
 
@@ -134,17 +138,21 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 							let param_desc = param.desc();
 							writeln!(out, "    {}: {},",
 								sanitize_reserved(param.name()),
-								type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info, &mut build_result)?)?;
+								type_to_string(
+									&param_desc.tdesc,
+									winapi::shared::minwindef::DWORD::from(param_desc.u.paramdesc().wParamFlags),
+									&type_info,
+									&mut build_result)?)?;
 						}
 
-						writeln!(out, ") -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+						writeln!(out, ") -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 						writeln!(out)?;
 					}
 
 					writeln!(out)?;
 				},
 
-				::winapi::um::oaidl::TKIND_INTERFACE => {
+				winapi::um::oaidl::TKIND_INTERFACE => {
 					writeln!(out, "RIDL!{{#[uuid(0x{:08x}, 0x{:04x}, 0x{:04x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x})]",
 						attributes.guid.Data1, attributes.guid.Data2, attributes.guid.Data3,
 						attributes.guid.Data4[0], attributes.guid.Data4[1], attributes.guid.Data4[2], attributes.guid.Data4[3],
@@ -182,26 +190,30 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 							continue;
 						}
 
-						assert_ne!(function_desc.funckind, ::winapi::um::oaidl::FUNC_STATIC);
-						assert_ne!(function_desc.funckind, ::winapi::um::oaidl::FUNC_DISPATCH);
+						assert_ne!(function_desc.funckind, winapi::um::oaidl::FUNC_STATIC);
+						assert_ne!(function_desc.funckind, winapi::um::oaidl::FUNC_DISPATCH);
 
 						let function_name = function.name();
 
 						match function_desc.invkind {
-							::winapi::um::oaidl::INVOKE_FUNC => {
+							winapi::um::oaidl::INVOKE_FUNC => {
 								writeln!(out, "    fn {}(", function_name)?;
 
 								for param in function.params() {
 									let param_desc = param.desc();
 									writeln!(out, "        {}: {},",
 										sanitize_reserved(param.name()),
-										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info, &mut build_result)?)?;
+										type_to_string(
+											&param_desc.tdesc,
+											winapi::shared::minwindef::DWORD::from(param_desc.u.paramdesc().wParamFlags),
+											&type_info,
+											&mut build_result)?)?;
 								}
 
-								writeln!(out, "    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+								writeln!(out, "    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 							},
 
-							::winapi::um::oaidl::INVOKE_PROPERTYGET => {
+							winapi::um::oaidl::INVOKE_PROPERTYGET => {
 								writeln!(out, "    fn get_{}(", function_name)?;
 
 								let mut explicit_ret_val = false;
@@ -210,31 +222,39 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 									let param_desc = param.desc();
 									writeln!(out, "        {}: {},",
 										sanitize_reserved(param.name()),
-										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info, &mut build_result)?)?;
+										type_to_string(
+											&param_desc.tdesc,
+											winapi::shared::minwindef::DWORD::from(param_desc.u.paramdesc().wParamFlags),
+											&type_info,
+											&mut build_result)?)?;
 
-									if ((param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == ::winapi::um::oaidl::PARAMFLAG_FRETVAL
+									if (
+										winapi::shared::minwindef::DWORD::from(param_desc.u.paramdesc().wParamFlags) & winapi::um::oaidl::PARAMFLAG_FRETVAL
+									) == winapi::um::oaidl::PARAMFLAG_FRETVAL
 									{
-										assert_eq!(function_desc.elemdescFunc.tdesc.vt, ::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE);
+										assert_eq!(function_desc.elemdescFunc.tdesc.vt, winapi::shared::wtypes::VT_HRESULT as winapi::shared::wtypes::VARTYPE);
 										explicit_ret_val = true;
 									}
 								}
 
 								if explicit_ret_val {
-									assert_eq!(function_desc.elemdescFunc.tdesc.vt, ::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE);
-									writeln!(out, "    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+									assert_eq!(function_desc.elemdescFunc.tdesc.vt, winapi::shared::wtypes::VT_HRESULT as winapi::shared::wtypes::VARTYPE);
+									writeln!(out, "    ) -> {},",
+										type_to_string(&function_desc.elemdescFunc.tdesc, winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 								}
 								else {
-									writeln!(out, "        value: *mut {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
-									writeln!(out, "    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE))?;
+									writeln!(out, "        value: *mut {},",
+										type_to_string(&function_desc.elemdescFunc.tdesc, winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+									writeln!(out, "    ) -> {},", well_known_type_to_string(winapi::shared::wtypes::VT_HRESULT as winapi::shared::wtypes::VARTYPE))?;
 								}
 							},
 
-							::winapi::um::oaidl::INVOKE_PROPERTYPUT |
-							::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => {
+							winapi::um::oaidl::INVOKE_PROPERTYPUT |
+							winapi::um::oaidl::INVOKE_PROPERTYPUTREF => {
 								writeln!(out, "    fn {}{}(",
 									match function_desc.invkind {
-										::winapi::um::oaidl::INVOKE_PROPERTYPUT => "put_",
-										::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "putref_",
+										winapi::um::oaidl::INVOKE_PROPERTYPUT => "put_",
+										winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "putref_",
 										_ => unreachable!(),
 									},
 									function_name)?;
@@ -243,10 +263,14 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 									let param_desc = param.desc();
 									writeln!(out, "        {}: {},",
 										sanitize_reserved(param.name()),
-										type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info, &mut build_result)?)?;
+										type_to_string(
+											&param_desc.tdesc,
+											winapi::shared::minwindef::DWORD::from(param_desc.u.paramdesc().wParamFlags),
+											&type_info,
+											&mut build_result)?)?;
 								}
 
-								writeln!(out, "    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+								writeln!(out, "    ) -> {},", type_to_string(&function_desc.elemdescFunc.tdesc, winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 							},
 
 							_ => unreachable!(),
@@ -261,18 +285,18 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 						let property_name = sanitize_reserved(property.name());
 
 						writeln!(out, "    fn get_{}(", property_name)?;
-						writeln!(out, "        value: *mut {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
-						writeln!(out, "    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE))?;
+						writeln!(out, "        value: *mut {},", type_to_string(property.type_(), winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+						writeln!(out, "    ) -> {},", well_known_type_to_string(winapi::shared::wtypes::VT_HRESULT as winapi::shared::wtypes::VARTYPE))?;
 						writeln!(out, "    fn put_{}(", property_name)?;
-						writeln!(out, "        value: {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FIN, &type_info, &mut build_result)?)?;
-						writeln!(out, "    ) -> {},", well_known_type_to_string(::winapi::shared::wtypes::VT_HRESULT as ::winapi::shared::wtypes::VARTYPE))?;
+						writeln!(out, "        value: {},", type_to_string(property.type_(), winapi::um::oaidl::PARAMFLAG_FIN, &type_info, &mut build_result)?)?;
+						writeln!(out, "    ) -> {},", well_known_type_to_string(winapi::shared::wtypes::VT_HRESULT as winapi::shared::wtypes::VARTYPE))?;
 					}
 
 					writeln!(out, "}}}}")?;
 					writeln!(out)?;
 				},
 
-				::winapi::um::oaidl::TKIND_DISPATCH => {
+				winapi::um::oaidl::TKIND_DISPATCH => {
 					if !emit_dispinterfaces {
 						build_result.skipped_dispinterfaces.push(format!("{}", type_info.name()));
 						continue;
@@ -310,7 +334,7 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 
 						let function_desc = function.desc();
 
-						assert_eq!(function_desc.funckind, ::winapi::um::oaidl::FUNC_DISPATCH);
+						assert_eq!(function_desc.funckind, winapi::um::oaidl::FUNC_DISPATCH);
 
 						if has_inherited_functions && (function_desc.oVft as usize) < 7 * std::mem::size_of::<usize>() {
 							continue;
@@ -318,16 +342,16 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 
 						let function_name = function.name();
 						let params: Vec<_> =
-							function.params().into_iter()
-							.filter(|param| ((param.desc().u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == 0)
+							function.params().iter()
+							.filter(|param| (winapi::shared::minwindef::DWORD::from(param.desc().u.paramdesc().wParamFlags) & winapi::um::oaidl::PARAMFLAG_FRETVAL) == 0)
 							.collect();
 
 						writeln!(out, "    pub unsafe fn {}{}(",
 							match function_desc.invkind {
-								::winapi::um::oaidl::INVOKE_FUNC => "",
-								::winapi::um::oaidl::INVOKE_PROPERTYGET => "get_",
-								::winapi::um::oaidl::INVOKE_PROPERTYPUT => "put_",
-								::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "putref_",
+								winapi::um::oaidl::INVOKE_FUNC => "",
+								winapi::um::oaidl::INVOKE_PROPERTYGET => "get_",
+								winapi::um::oaidl::INVOKE_PROPERTYPUT => "put_",
+								winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "putref_",
 								_ => unreachable!(),
 							},
 							function_name)?;
@@ -338,7 +362,11 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 							let param_desc = param.desc();
 							writeln!(out, "        {}: {},",
 								sanitize_reserved(param.name()),
-								type_to_string(&param_desc.tdesc, param_desc.u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD, &type_info, &mut build_result)?)?;
+								type_to_string(
+									&param_desc.tdesc,
+									winapi::shared::minwindef::DWORD::from(param_desc.u.paramdesc().wParamFlags),
+									&type_info,
+									&mut build_result)?)?;
 						}
 
 						writeln!(out, "    ) -> (HRESULT, VARIANT, EXCEPINFO, UINT) {{")?;
@@ -348,7 +376,7 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 
 							for param in params.into_iter().rev() {
 								let param_desc = param.desc();
-								if ((param.desc().u.paramdesc().wParamFlags as ::winapi::shared::minwindef::DWORD) & ::winapi::um::oaidl::PARAMFLAG_FRETVAL) == 0 {
+								if (winapi::shared::minwindef::DWORD::from(param.desc().u.paramdesc().wParamFlags) & winapi::um::oaidl::PARAMFLAG_FRETVAL) == 0 {
 									let (vt, mutator) = vartype_mutator(&param_desc.tdesc, &sanitize_reserved(param.name()), &type_info);
 									writeln!(out, "            {{ let mut v: VARIANT = ::core::mem::uninitialized(); VariantInit(&mut v); *v.vt_mut() = {}; *v{}; v }},", vt, mutator)?;
 								}
@@ -358,7 +386,7 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 							writeln!(out)?;
 						}
 
-						if function_desc.invkind == ::winapi::um::oaidl::INVOKE_PROPERTYPUT || function_desc.invkind == ::winapi::um::oaidl::INVOKE_PROPERTYPUTREF {
+						if function_desc.invkind == winapi::um::oaidl::INVOKE_PROPERTYPUT || function_desc.invkind == winapi::um::oaidl::INVOKE_PROPERTYPUTREF {
 							writeln!(out, "        let disp_id_put = DISPID_PROPERTYPUT;")?;
 							writeln!(out)?;
 						}
@@ -374,19 +402,19 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 						writeln!(out, "            rgvarg: {},", if function_desc.cParams > 0 { "args.as_mut_ptr()" } else { "::core::ptr::null_mut()" })?;
 						writeln!(out, "            rgdispidNamedArgs: {},",
 							match function_desc.invkind {
-								::winapi::um::oaidl::INVOKE_FUNC |
-								::winapi::um::oaidl::INVOKE_PROPERTYGET => "::core::ptr::null_mut()",
-								::winapi::um::oaidl::INVOKE_PROPERTYPUT |
-								::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "&disp_id_put",
+								winapi::um::oaidl::INVOKE_FUNC |
+								winapi::um::oaidl::INVOKE_PROPERTYGET => "::core::ptr::null_mut()",
+								winapi::um::oaidl::INVOKE_PROPERTYPUT |
+								winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "&disp_id_put",
 								_ => unreachable!(),
 							})?;
 						writeln!(out, "            cArgs: {},", function_desc.cParams)?;
 						writeln!(out, "            cNamedArgs: {},",
 							match function_desc.invkind {
-								::winapi::um::oaidl::INVOKE_FUNC |
-								::winapi::um::oaidl::INVOKE_PROPERTYGET => "0",
-								::winapi::um::oaidl::INVOKE_PROPERTYPUT |
-								::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "1",
+								winapi::um::oaidl::INVOKE_FUNC |
+								winapi::um::oaidl::INVOKE_PROPERTYGET => "0",
+								winapi::um::oaidl::INVOKE_PROPERTYPUT |
+								winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "1",
 								_ => unreachable!(),
 							})?;
 						writeln!(out, "        }};")?;
@@ -398,10 +426,10 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 						writeln!(out, "            /* lcid */ 0,")?;
 						writeln!(out, "            /* wFlags */ {},",
 							match function_desc.invkind {
-								::winapi::um::oaidl::INVOKE_FUNC => "DISPATCH_METHOD",
-								::winapi::um::oaidl::INVOKE_PROPERTYGET => "DISPATCH_PROPERTYGET",
-								::winapi::um::oaidl::INVOKE_PROPERTYPUT => "DISPATCH_PROPERTYPUT",
-								::winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "DISPATCH_PROPERTYPUTREF",
+								winapi::um::oaidl::INVOKE_FUNC => "DISPATCH_METHOD",
+								winapi::um::oaidl::INVOKE_PROPERTYGET => "DISPATCH_PROPERTYGET",
+								winapi::um::oaidl::INVOKE_PROPERTYPUT => "DISPATCH_PROPERTYPUT",
+								winapi::um::oaidl::INVOKE_PROPERTYPUTREF => "DISPATCH_PROPERTYPUTREF",
 								_ => unreachable!(),
 							})?;
 						writeln!(out, "            /* pDispParams */ &mut disp_params,")?;
@@ -455,7 +483,7 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 						writeln!(out, "    }}")?;
 						writeln!(out)?;
 						writeln!(out, "    pub unsafe fn put_{}(", property_name)?;
-						writeln!(out, "        value: {},", type_to_string(property.type_(), ::winapi::um::oaidl::PARAMFLAG_FIN, &type_info, &mut build_result)?)?;
+						writeln!(out, "        value: {},", type_to_string(property.type_(), winapi::um::oaidl::PARAMFLAG_FIN, &type_info, &mut build_result)?)?;
 						writeln!(out, "    ) -> (HRESULT, VARIANT, EXCEPINFO, UINT) {{")?;
 						writeln!(out, "        let mut args: [VARIANT; 1] = [")?;
 						let (vt, mutator) = vartype_mutator(type_, "value", &type_info);
@@ -498,7 +526,7 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 					writeln!(out)?;
 				},
 
-				::winapi::um::oaidl::TKIND_COCLASS => {
+				winapi::um::oaidl::TKIND_COCLASS => {
 					for parent in type_info.get_parents() {
 						let parent = parent?;
 						let parent_name = parent.name();
@@ -513,19 +541,21 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 					writeln!(out)?;
 				},
 
-				::winapi::um::oaidl::TKIND_ALIAS => {
-					writeln!(out, "pub type {} = {};", type_name, type_to_string(&attributes.tdescAlias, ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+				winapi::um::oaidl::TKIND_ALIAS => {
+					writeln!(out, "pub type {} = {};", type_name, type_to_string(&attributes.tdescAlias, winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 					writeln!(out)?;
 				},
 
-				::winapi::um::oaidl::TKIND_UNION => {
+				winapi::um::oaidl::TKIND_UNION => {
 					let alignment = match attributes.cbAlignment {
 						4 => "u32",
 						8 => "u64",
 						_ => unreachable!(),
 					};
 
-					let num_aligned_elements = (attributes.cbSizeInstance + (attributes.cbAlignment as ::winapi::shared::minwindef::ULONG) - 1) / (attributes.cbAlignment as ::winapi::shared::minwindef::ULONG);
+					let num_aligned_elements =
+						(attributes.cbSizeInstance + winapi::shared::minwindef::ULONG::from(attributes.cbAlignment) - 1) /
+						winapi::shared::minwindef::ULONG::from(attributes.cbAlignment);
 					assert!(num_aligned_elements > 0);
 					let wrapped_type = match num_aligned_elements {
 						1 => alignment.to_string(),
@@ -539,7 +569,7 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 						let field = field?;
 
 						let field_name = sanitize_reserved(field.name());
-						writeln!(out, "    {} {}_mut: {},", field_name, field_name, type_to_string(field.type_(), ::winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
+						writeln!(out, "    {} {}_mut: {},", field_name, field_name, type_to_string(field.type_(), winapi::um::oaidl::PARAMFLAG_FOUT, &type_info, &mut build_result)?)?;
 					}
 
 					writeln!(out, "}}}}")?;
@@ -554,8 +584,8 @@ pub fn build<W>(filename: &std::path::Path, emit_dispinterfaces: bool, mut out: 
 	Ok(build_result)
 }
 
-pub(crate) fn os_str_to_wstring(s: &::std::ffi::OsStr) -> Vec<u16> {
-	let result = ::std::os::windows::ffi::OsStrExt::encode_wide(s);
+fn os_str_to_wstring(s: &std::ffi::OsStr) -> Vec<u16> {
+	let result = std::os::windows::ffi::OsStrExt::encode_wide(s);
 	let mut result: Vec<_> = result.collect();
 	result.push(0);
 	result
@@ -570,10 +600,10 @@ fn sanitize_reserved(s: &rc::BString) -> String {
 	}
 }
 
-unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32, type_info: &types::TypeInfo, build_result: &mut BuildResult) -> ::Result<String> {
-	match type_.vt as ::winapi::shared::wtypes::VARENUM {
-		::winapi::shared::wtypes::VT_PTR =>
-			if (param_flags & ::winapi::um::oaidl::PARAMFLAG_FIN) == ::winapi::um::oaidl::PARAMFLAG_FIN && (param_flags & ::winapi::um::oaidl::PARAMFLAG_FOUT) == 0 {
+unsafe fn type_to_string(type_: &winapi::um::oaidl::TYPEDESC, param_flags: u32, type_info: &types::TypeInfo, build_result: &mut BuildResult) -> Result<String, Error> {
+	match winapi::shared::wtypes::VARENUM::from(type_.vt) {
+		winapi::shared::wtypes::VT_PTR =>
+			if (param_flags & winapi::um::oaidl::PARAMFLAG_FIN) == winapi::um::oaidl::PARAMFLAG_FIN && (param_flags & winapi::um::oaidl::PARAMFLAG_FOUT) == 0 {
 				// [in] => *const
 				type_to_string(&**type_.u.lptdesc(), param_flags, type_info, build_result).map(|type_name| format!("*const {}", type_name))
 			}
@@ -583,7 +613,7 @@ unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32
 				type_to_string(&**type_.u.lptdesc(), param_flags, type_info, build_result).map(|type_name| format!("*mut {}", type_name))
 			},
 
-		::winapi::shared::wtypes::VT_CARRAY => {
+		winapi::shared::wtypes::VT_CARRAY => {
 			let num_dimensions = (**type_.u.lpadesc()).cDims as usize;
 			let dimensions: &[winapi::um::oaidl::SAFEARRAYBOUND] = std::slice::from_raw_parts((**type_.u.lpadesc()).rgbounds.as_ptr(), num_dimensions);
 
@@ -596,10 +626,10 @@ unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32
 			Ok(type_name)
 		},
 
-		::winapi::shared::wtypes::VT_USERDEFINED =>
+		winapi::shared::wtypes::VT_USERDEFINED =>
 			match type_info.get_ref_type_info(*type_.u.hreftype()).map(|ref_type_info| ref_type_info.name().to_string()) {
 				Ok(ref_type_name) => Ok(ref_type_name),
-				Err(::Error(::ErrorKind::HResult(::winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY), _)) => {
+				Err(Error::HResult(winapi::shared::winerror::TYPE_E_CANTLOADLIBRARY)) => {
 					build_result.num_missing_types += 1;
 					Ok("__missing_type__".to_string())
 				},
@@ -610,70 +640,70 @@ unsafe fn type_to_string(type_: &::winapi::um::oaidl::TYPEDESC, param_flags: u32
 	}
 }
 
-fn well_known_type_to_string(vt: ::winapi::shared::wtypes::VARTYPE) -> &'static str {
-	match vt as ::winapi::shared::wtypes::VARENUM {
-		::winapi::shared::wtypes::VT_I2 => "i16",
-		::winapi::shared::wtypes::VT_I4 => "i32",
-		::winapi::shared::wtypes::VT_R4 => "f32",
-		::winapi::shared::wtypes::VT_R8 => "f64",
-		::winapi::shared::wtypes::VT_CY => "CY",
-		::winapi::shared::wtypes::VT_DATE => "DATE",
-		::winapi::shared::wtypes::VT_BSTR => "BSTR",
-		::winapi::shared::wtypes::VT_DISPATCH => "LPDISPATCH",
-		::winapi::shared::wtypes::VT_ERROR => "SCODE",
-		::winapi::shared::wtypes::VT_BOOL => "VARIANT_BOOL",
-		::winapi::shared::wtypes::VT_VARIANT => "VARIANT",
-		::winapi::shared::wtypes::VT_UNKNOWN => "LPUNKNOWN",
-		::winapi::shared::wtypes::VT_DECIMAL => "DECIMAL",
-		::winapi::shared::wtypes::VT_I1 => "i8",
-		::winapi::shared::wtypes::VT_UI1 => "u8",
-		::winapi::shared::wtypes::VT_UI2 => "u16",
-		::winapi::shared::wtypes::VT_UI4 => "u32",
-		::winapi::shared::wtypes::VT_I8 => "i64",
-		::winapi::shared::wtypes::VT_UI8 => "u64",
-		::winapi::shared::wtypes::VT_INT => "INT",
-		::winapi::shared::wtypes::VT_UINT => "UINT",
-		::winapi::shared::wtypes::VT_VOID => "c_void",
-		::winapi::shared::wtypes::VT_HRESULT => "HRESULT",
-		::winapi::shared::wtypes::VT_SAFEARRAY => "SAFEARRAY",
-		::winapi::shared::wtypes::VT_LPSTR => "LPSTR",
-		::winapi::shared::wtypes::VT_LPWSTR => "LPCWSTR",
+fn well_known_type_to_string(vt: winapi::shared::wtypes::VARTYPE) -> &'static str {
+	match winapi::shared::wtypes::VARENUM::from(vt) {
+		winapi::shared::wtypes::VT_I2 => "i16",
+		winapi::shared::wtypes::VT_I4 => "i32",
+		winapi::shared::wtypes::VT_R4 => "f32",
+		winapi::shared::wtypes::VT_R8 => "f64",
+		winapi::shared::wtypes::VT_CY => "CY",
+		winapi::shared::wtypes::VT_DATE => "DATE",
+		winapi::shared::wtypes::VT_BSTR => "BSTR",
+		winapi::shared::wtypes::VT_DISPATCH => "LPDISPATCH",
+		winapi::shared::wtypes::VT_ERROR => "SCODE",
+		winapi::shared::wtypes::VT_BOOL => "VARIANT_BOOL",
+		winapi::shared::wtypes::VT_VARIANT => "VARIANT",
+		winapi::shared::wtypes::VT_UNKNOWN => "LPUNKNOWN",
+		winapi::shared::wtypes::VT_DECIMAL => "DECIMAL",
+		winapi::shared::wtypes::VT_I1 => "i8",
+		winapi::shared::wtypes::VT_UI1 => "u8",
+		winapi::shared::wtypes::VT_UI2 => "u16",
+		winapi::shared::wtypes::VT_UI4 => "u32",
+		winapi::shared::wtypes::VT_I8 => "i64",
+		winapi::shared::wtypes::VT_UI8 => "u64",
+		winapi::shared::wtypes::VT_INT => "INT",
+		winapi::shared::wtypes::VT_UINT => "UINT",
+		winapi::shared::wtypes::VT_VOID => "c_void",
+		winapi::shared::wtypes::VT_HRESULT => "HRESULT",
+		winapi::shared::wtypes::VT_SAFEARRAY => "SAFEARRAY",
+		winapi::shared::wtypes::VT_LPSTR => "LPSTR",
+		winapi::shared::wtypes::VT_LPWSTR => "LPCWSTR",
 		_ => unreachable!(),
 	}
 }
 
-unsafe fn vartype_mutator(type_: &::winapi::um::oaidl::TYPEDESC, param_name: &str, type_info: &types::TypeInfo) -> (::winapi::shared::wtypes::VARENUM, String) {
-	match type_.vt as ::winapi::shared::wtypes::VARENUM {
-		vt @ ::winapi::shared::wtypes::VT_I2 => (vt, format!(".iVal_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_I4 => (vt, format!(".lVal_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_CY => (vt, format!(".cyVal_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_BSTR => (vt, format!(".bstrVal_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_DISPATCH => (vt, format!(".pdispVal_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_ERROR => (vt, format!(".scode_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_BOOL => (vt, format!(".boolVal_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_VARIANT => (vt, format!(" = *(&{} as *const _ as *mut _)", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_UNKNOWN => (vt, format!(".punkVal_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_UI2 => (vt, format!(".uiVal_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_UI4 => (vt, format!(".ulVal_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_INT => (vt, format!(".intVal_mut() = {}", param_name)),
-		vt @ ::winapi::shared::wtypes::VT_UINT => (vt, format!(".uintVal_mut() = {}", param_name)),
-		::winapi::shared::wtypes::VT_PTR => {
-			let pointee_vt = (**type_.u.lptdesc()).vt as ::winapi::shared::wtypes::VARENUM;
+unsafe fn vartype_mutator(type_: &winapi::um::oaidl::TYPEDESC, param_name: &str, type_info: &types::TypeInfo) -> (winapi::shared::wtypes::VARENUM, String) {
+	match winapi::shared::wtypes::VARENUM::from(type_.vt) {
+		vt @ winapi::shared::wtypes::VT_I2 => (vt, format!(".iVal_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_I4 => (vt, format!(".lVal_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_CY => (vt, format!(".cyVal_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_BSTR => (vt, format!(".bstrVal_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_DISPATCH => (vt, format!(".pdispVal_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_ERROR => (vt, format!(".scode_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_BOOL => (vt, format!(".boolVal_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_VARIANT => (vt, format!(" = *(&{} as *const _ as *mut _)", param_name)),
+		vt @ winapi::shared::wtypes::VT_UNKNOWN => (vt, format!(".punkVal_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_UI2 => (vt, format!(".uiVal_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_UI4 => (vt, format!(".ulVal_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_INT => (vt, format!(".intVal_mut() = {}", param_name)),
+		vt @ winapi::shared::wtypes::VT_UINT => (vt, format!(".uintVal_mut() = {}", param_name)),
+		winapi::shared::wtypes::VT_PTR => {
+			let pointee_vt = winapi::shared::wtypes::VARENUM::from((**type_.u.lptdesc()).vt);
 			match pointee_vt {
-				::winapi::shared::wtypes::VT_I4 => (pointee_vt | ::winapi::shared::wtypes::VT_BYREF, format!(".plVal_mut() = {}", param_name)),
-				::winapi::shared::wtypes::VT_BSTR => (pointee_vt | ::winapi::shared::wtypes::VT_BYREF, format!(".pbstrVal_mut() = {}", param_name)),
-				::winapi::shared::wtypes::VT_DISPATCH => (pointee_vt | ::winapi::shared::wtypes::VT_BYREF, format!(".ppdispVal_mut() = {}", param_name)),
-				::winapi::shared::wtypes::VT_BOOL => (pointee_vt | ::winapi::shared::wtypes::VT_BYREF, format!(".pboolVal_mut() = {}", param_name)),
-				::winapi::shared::wtypes::VT_VARIANT => (pointee_vt | ::winapi::shared::wtypes::VT_BYREF, format!(".pvarval_mut() = {}", param_name)),
-				::winapi::shared::wtypes::VT_USERDEFINED => (::winapi::shared::wtypes::VT_DISPATCH, format!(".pdispVal_mut() = {}", param_name)),
+				winapi::shared::wtypes::VT_I4 => (pointee_vt | winapi::shared::wtypes::VT_BYREF, format!(".plVal_mut() = {}", param_name)),
+				winapi::shared::wtypes::VT_BSTR => (pointee_vt | winapi::shared::wtypes::VT_BYREF, format!(".pbstrVal_mut() = {}", param_name)),
+				winapi::shared::wtypes::VT_DISPATCH => (pointee_vt | winapi::shared::wtypes::VT_BYREF, format!(".ppdispVal_mut() = {}", param_name)),
+				winapi::shared::wtypes::VT_BOOL => (pointee_vt | winapi::shared::wtypes::VT_BYREF, format!(".pboolVal_mut() = {}", param_name)),
+				winapi::shared::wtypes::VT_VARIANT => (pointee_vt | winapi::shared::wtypes::VT_BYREF, format!(".pvarval_mut() = {}", param_name)),
+				winapi::shared::wtypes::VT_USERDEFINED => (winapi::shared::wtypes::VT_DISPATCH, format!(".pdispVal_mut() = {}", param_name)),
 				_ => unreachable!(),
 			}
 		},
-		::winapi::shared::wtypes::VT_USERDEFINED => {
+		winapi::shared::wtypes::VT_USERDEFINED => {
 			let ref_type = type_info.get_ref_type_info(*type_.u.hreftype()).unwrap();
 			let size = ref_type.attributes().cbSizeInstance;
 			match size {
-				4 => (::winapi::shared::wtypes::VT_I4, format!(".lVal_mut() = {}", param_name)), // enum
+				4 => (winapi::shared::wtypes::VT_I4, format!(".lVal_mut() = {}", param_name)), // enum
 				_ => unreachable!(),
 			}
 		},

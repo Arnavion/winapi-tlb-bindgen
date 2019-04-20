@@ -1,5 +1,3 @@
-extern crate winapi_tlb_bindgen;
-
 fn main() {
 	let msxml_rs = {
 		let msxml_rs = std::env::var_os("OUT_DIR").unwrap();
@@ -11,7 +9,7 @@ fn main() {
 
 	let _ =
 		winapi_tlb_bindgen::build(
-			std::path::Path::new(r"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.17763.0\um\x64\MsXml.Tlb"),
+			std::path::Path::new(r"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.18362.0\um\x64\MsXml.Tlb"),
 			false,
 			msxml_rs,
 		).unwrap();

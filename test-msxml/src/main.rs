@@ -1,5 +1,4 @@
-#[macro_use]
-extern crate winapi;
+#![deny(rust_2018_idioms, warnings)]
 
 mod msxml;
 
@@ -60,7 +59,7 @@ fn main() {
 unsafe fn bstr(s: &str) -> winapi::shared::wtypes::BSTR {
 	let mut s: Vec<_> = s.encode_utf16().collect();
 	s.push(0);
-	::winapi::um::oleauto::SysAllocString(s.as_ptr())
+	winapi::um::oleauto::SysAllocString(s.as_ptr())
 }
 
 unsafe fn bstr_variant(s: &str) -> winapi::um::oaidl::VARIANT {
