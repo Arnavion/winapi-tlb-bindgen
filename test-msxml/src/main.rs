@@ -63,8 +63,11 @@ unsafe fn bstr(s: &str) -> winapi::shared::wtypes::BSTR {
 }
 
 unsafe fn bstr_variant(s: &str) -> winapi::um::oaidl::VARIANT {
-	let mut result: winapi::um::oaidl::VARIANT = std::mem::uninitialized();
-	winapi::um::oleauto::VariantInit(&mut result);
+	let mut result = {
+		let mut result = std::mem::MaybeUninit::uninit();
+		winapi::um::oleauto::VariantInit(result.as_mut_ptr());
+		result.assume_init()
+	};
 	result.n1.n2_mut().vt = winapi::shared::wtypes::VT_BSTR as _;
 	*result.n1.n2_mut().n3.bstrVal_mut() = bstr(s);
 	result

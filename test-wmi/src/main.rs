@@ -68,8 +68,11 @@ fn main() {
 		assert_eq!(num_returned, 1);
 
 		// Get caption field from query
-		let mut caption: winapi::um::oaidl::VARIANT = std::mem::uninitialized();
-		winapi::um::oleauto::VariantInit(&mut caption);
+		let mut caption = {
+			let mut caption = std::mem::MaybeUninit::uninit();
+			winapi::um::oleauto::VariantInit(caption.as_mut_ptr());
+			caption.assume_init()
+		};
 		assert_hr!((&*object).Get(bstr("Caption"), 0, &mut caption, std::ptr::null_mut(), std::ptr::null_mut()));
 		let caption = *caption.n1.n2().n3.bstrVal();
 		let caption_len = winapi::um::oleauto::SysStringLen(caption) as usize;
