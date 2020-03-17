@@ -1,3 +1,7 @@
+This crate is no longer maintained because I do not use Windows any more.
+
+---
+
 Generates bindings to COM interfaces, enums and coclasses.
 
 
