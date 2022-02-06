@@ -1,5 +1,7 @@
 This crate is no longer maintained because I do not use Windows any more.
 
+If you have questions about this repository, open an issue at https://github.com/Arnavion/archived-repos-issues
+
 ---
 
 Generates bindings to COM interfaces, enums and coclasses.
