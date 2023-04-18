@@ -1,7 +1,8 @@
 [package]
 name = "test-msxml"
 version = "0.1.0"
-authors = ["Arnavion <arnavion@gmail.com>"]
+license = "Apache-2.0"
+authors = ["Arnavion <me@arnavion.dev>"]
 edition = "2018"
 publish = false
 
